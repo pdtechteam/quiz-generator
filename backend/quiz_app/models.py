@@ -257,9 +257,17 @@ class GameSession(models.Model):
 
     def get_current_question(self):
         """Возвращает текущий вопрос"""
-        questions = self.quiz.questions.all()
-        if 0 <= self.current_question < len(questions):
-            return questions[self.current_question]
+        questions = self.quiz.questions.all().order_by('order')
+
+        print(f"🔍 Getting question at index {self.current_question}")
+        print(f"📊 Total questions: {questions.count()}")
+
+        if 0 <= self.current_question < questions.count():
+            q = questions[self.current_question]
+            print(f"✅ Found question: {q.text[:50]}")
+            return q
+
+        print(f"❌ No question found at index {self.current_question}")
         return None
 
     def get_connected_players_count(self):
@@ -268,7 +276,7 @@ class GameSession(models.Model):
 
     def get_total_questions(self):
         """Возвращает общее количество вопросов в квизе"""
-        return self.quiz.questions.count()
+        return self.quiz.questions.all().count()
 
     def is_last_question(self):
         """Проверяет, последний ли это вопрос"""

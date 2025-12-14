@@ -363,6 +363,7 @@ class GameConsumer(AsyncWebsocketConsumer):
 
     async def show_next_question(self):
         """Показать следующий вопрос"""
+        # Получаем ТЕКУЩИЙ вопрос
         question_data = await self.get_next_question()
 
         if question_data is None:
@@ -378,6 +379,10 @@ class GameConsumer(AsyncWebsocketConsumer):
                 'question': question_data
             }
         )
+
+        # ПОСЛЕ показа вопроса переходим к следующему
+        # (подготовка для следующего вызова show_next_question)
+        await self.move_to_next_question()
 
     async def finish_game(self):
         """Завершение игры"""
@@ -595,19 +600,24 @@ class GameConsumer(AsyncWebsocketConsumer):
 
     @database_sync_to_async
     def get_next_question(self):
-        """Получить следующий вопрос"""
+        """Получить текущий вопрос БЕЗ изменения счётчика"""
         session = GameSession.objects.get(code=self.session_code)
 
-        # Увеличиваем счётчик
-        session.current_question += 1
-        session.save()
-
-        # Получаем вопрос
+        # Получаем ТЕКУЩИЙ вопрос (не увеличиваем счётчик!)
         question = session.get_current_question()
-        if not question:
+
+        if question is None:
             return None
 
         return QuestionForPlayerSerializer(question).data
+
+    @database_sync_to_async
+    def move_to_next_question(self):
+        """Переход к следующему вопросу"""
+        session = GameSession.objects.get(code=self.session_code)
+        session.current_question += 1
+        session.save()
+        return session.current_question
 
     @database_sync_to_async
     def skip_current_question(self):
