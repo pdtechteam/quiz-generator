@@ -12,12 +12,10 @@ class GameWebSocket {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
     const host = window.location.hostname
     const port = import.meta.env.DEV ? '8000' : window.location.port
-    
+
     // В dev режиме подключаемся к Django напрямую
-    const wsUrl = import.meta.env.DEV 
-      ? `ws://127.0.0.1:8000/ws/game/${this.sessionCode}/`
-      : `${protocol}//${host}:${port}/ws/game/${this.sessionCode}/`
-    
+    const wsUrl = `ws://192.168.2.100:8000/ws/game/${this.sessionCode}/` // ДЛЯ ЛОКАЛЬНОГО ДОСТУПА
+
     console.log('🔌 Connecting to:', wsUrl)
     
     this.ws = new WebSocket(wsUrl)

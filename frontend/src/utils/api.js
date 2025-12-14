@@ -1,6 +1,4 @@
-const API_BASE_URL = import.meta.env.DEV 
-  ? 'http://127.0.0.1:8000/api'
-  : '/api'
+const API_BASE_URL = 'http://192.168.2.100:8000/api' // ДЛЯ ЛОКАЛЬНОГО ДОСТУПА
 
 class API {
   async request(endpoint, options = {}) {
