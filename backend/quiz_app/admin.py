@@ -38,7 +38,7 @@ class QuizAdmin(admin.ModelAdmin):
 
 @admin.register(Question)
 class QuestionAdmin(admin.ModelAdmin):
-    list_display = ['quiz', 'order', 'text_preview', 'difficulty', 'generated_by_model']
+    list_display = ['quiz', 'order', 'text_preview', 'difficulty', 'time_limit', 'generated_by_model']
     list_filter = ['quiz', 'difficulty', 'generated_by_model']
     search_fields = ['text', 'explanation']
     inlines = [ChoiceInline]
@@ -46,7 +46,7 @@ class QuestionAdmin(admin.ModelAdmin):
 
     fieldsets = [
         ('Основная информация', {
-            'fields': ['quiz', 'order', 'text', 'difficulty']
+            'fields': ['quiz', 'order', 'text', 'difficulty', 'time_limit']
         }),
         ('Дополнительно', {
             'fields': ['explanation', 'image_url']

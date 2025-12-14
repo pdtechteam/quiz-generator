@@ -28,13 +28,13 @@ class QuestionSerializer(serializers.ModelSerializer):
     """Сериализатор для вопросов (полный, с правильными ответами)"""
     choices = ChoiceSerializer(many=True, read_only=True)
     correct_choice = serializers.SerializerMethodField()
-    time_limit = serializers.SerializerMethodField()  # <-- ДОБАВЬ ЭТУ СТРОКУ
+    time_limit = serializers.SerializerMethodField()
 
     class Meta:
         model = Question
         fields = [
             'id', 'uuid', 'order', 'text', 'difficulty',
-            'explanation', 'image_url', 'time_limit',  # <-- time_limit здесь тоже
+            'explanation', 'image_url', 'time_limit',
             'choices', 'correct_choice'
         ]
 
@@ -43,21 +43,15 @@ class QuestionSerializer(serializers.ModelSerializer):
         correct = obj.get_correct_choice()
         return correct.id if correct else None
 
-    # ДОБАВЬ ЭТОТ МЕТОД:
     def get_time_limit(self, obj):
-        """Получаем время из квиза"""
-        return obj.quiz.time_per_question
-
-    def get_correct_choice(self, obj):
-        """Возвращает ID правильного варианта"""
-        correct = obj.get_correct_choice()
-        return correct.id if correct else None
+        """Получаем время (своё или из квиза)"""
+        return obj.get_time_limit()  # <-- ИЗМЕНЕНО
 
 
 class QuestionForPlayerSerializer(serializers.ModelSerializer):
     """Вопрос для игрока (БЕЗ правильного ответа и объяснения)"""
     choices = ChoiceForPlayerSerializer(many=True, read_only=True)
-    time_limit = serializers.SerializerMethodField()  # <-- ДОБАВЬ ЭТУ СТРОКУ
+    time_limit = serializers.SerializerMethodField()
 
     class Meta:
         model = Question
@@ -66,10 +60,9 @@ class QuestionForPlayerSerializer(serializers.ModelSerializer):
             'image_url', 'time_limit', 'choices'
         ]
 
-    # ДОБАВЬ ЭТОТ МЕТОД:
     def get_time_limit(self, obj):
-        """Получаем время из квиза, а не из вопроса"""
-        return obj.quiz.time_per_question
+        """Получаем время (своё или из квиза)"""
+        return obj.get_time_limit()  # <-- ИЗМЕНЕНО
 
 
 class QuizListSerializer(serializers.ModelSerializer):

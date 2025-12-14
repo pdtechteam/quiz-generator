@@ -126,6 +126,14 @@ class Question(models.Model):
         blank=True,
         verbose_name="URL картинки"
     )
+    # ===== ДОБАВЬ ЭТО ПОЛЕ =====
+    time_limit = models.IntegerField(
+        default=0,
+        validators=[MinValueValidator(0), MaxValueValidator(120)],
+        verbose_name="Время на вопрос (сек)",
+        help_text="0 = использовать время из квиза. Можно задать индивидуальное время для сложных вопросов"
+    )
+    # ===========================
     generated_by_model = models.BooleanField(
         default=True,
         verbose_name="Сгенерирован LLM"
@@ -147,6 +155,13 @@ class Question(models.Model):
     def get_correct_choice(self):
         """Возвращает правильный вариант ответа"""
         return self.choices.filter(is_correct=True).first()
+
+    # ===== ДОБАВЬ ЭТОТ МЕТОД =====
+    def get_time_limit(self):
+        """Возвращает время на вопрос (своё или из квиза)"""
+        if self.time_limit > 0:
+            return self.time_limit
+        return self.quiz.time_per_question
 
 
 class Choice(models.Model):

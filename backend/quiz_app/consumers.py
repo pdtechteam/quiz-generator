@@ -250,6 +250,73 @@ class GameConsumer(AsyncWebsocketConsumer):
         # Обновляем статистику для всех
         await self.send_answer_stats()
 
+        # НОВОЕ: Проверяем, все ли ответили
+        all_answered = await self.check_all_answered(question_uuid)
+
+        if all_answered:
+            print("✅ Все ответили! Переходим к результатам...")
+            await asyncio.sleep(2)  # Даём 2 сек посмотреть на свой результат
+
+            await self.show_question_results(question_uuid)
+            await asyncio.sleep(5)  # Показываем результаты 5 сек
+
+            has_more = await self.has_more_questions()
+
+            if has_more:
+                print("➡️ Следующий вопрос...")
+                await self.show_next_question()
+            else:
+                print("🏁 Игра окончена!")
+                await self.finish_game()
+
+    @database_sync_to_async
+    def check_all_answered(self, question_uuid):
+        """Проверяем, все ли ответили"""
+        session = GameSession.objects.get(code=self.session_code)
+        question = Question.objects.get(uuid=question_uuid)
+
+        connected_players = session.players.filter(connected=True).count()
+        answers_count = Answer.objects.filter(
+            player__session=session,
+            question=question
+        ).count()
+
+        print(f"📊 Ответили: {answers_count}/{connected_players}")
+        return answers_count >= connected_players
+
+    @database_sync_to_async
+    def has_more_questions(self):
+        """Есть ли ещё вопросы"""
+        session = GameSession.objects.get(code=self.session_code)
+        total_questions = session.quiz.questions.count()
+        has_more = session.current_question < total_questions
+
+        print(f"❓ Индекс: {session.current_question}/{total_questions}, Есть ещё: {has_more}")
+        return has_more
+
+    async def show_question_results(self, question_uuid):
+        """Показать результаты вопроса"""
+        print("📈 Показываем результаты...")
+
+        question_data = await self.get_question_with_answer(question_uuid)
+        leaderboard = await self.get_leaderboard()
+
+        await self.channel_layer.group_send(
+            self.room_group_name,
+            {
+                'type': 'question_result',
+                'question': question_data,
+                'leaderboard': leaderboard
+            }
+        )
+
+    @database_sync_to_async
+    def get_question_with_answer(self, question_uuid):
+        """Получить вопрос с правильным ответом"""
+        from .serializers import QuestionSerializer
+        question = Question.objects.get(uuid=question_uuid)
+        return QuestionSerializer(question).data
+
     async def handle_pause_game(self, data):
         """Пауза (только ведущий)"""
         if not await self.verify_host():
@@ -510,6 +577,14 @@ class GameConsumer(AsyncWebsocketConsumer):
         """Broadcast: эмодзи реакция"""
         await self.send(text_data=json.dumps(event))
 
+    async def question_result(self, event):
+        """Broadcast: результаты вопроса"""
+        await self.send(text_data=json.dumps(event))
+
+    async def answer_stats(self, event):
+        """Broadcast: статистика ответов"""
+        await self.send(text_data=json.dumps(event))
+
     # ========================================================================
     # РАБОТА С БАЗОЙ ДАННЫХ (database_sync_to_async)
     # ========================================================================
@@ -643,7 +718,7 @@ class GameConsumer(AsyncWebsocketConsumer):
             points = calculate_score(
                 is_correct=is_correct,
                 time_taken=time_taken,
-                time_limit=question.time_limit,
+                time_limit=question.get_time_limit(),
                 current_streak=player.current_streak,
                 difficulty=question.difficulty
             )

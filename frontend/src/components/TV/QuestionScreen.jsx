@@ -1,4 +1,4 @@
-function QuestionScreen({ question, players }) {
+function QuestionScreen({ question, players, gameState }) {
   if (!question) {
     return (
       <div className="w-screen h-screen bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center text-white">
@@ -39,7 +39,12 @@ function QuestionScreen({ question, players }) {
 
         {/* Players answered */}
         <div className="text-2xl text-center opacity-75">
-          Ответили: {players.filter(p => p.answered).length} / {players.length}
+          Ответили: {gameState?.answeredCount || '0/0'}
+          {gameState?.correctCount !== undefined && (
+            <span className="ml-4 text-green-400">
+              ✓ {gameState.correctCount} правильных
+            </span>
+          )}
         </div>
       </div>
     </div>

@@ -81,7 +81,16 @@ function TVScreen() {
       setGameState(prev => ({ ...prev, currentQuestion: data.question }))
       setCurrentView('question')
     })
-    
+
+    websocket.on('answer_stats', (data) => {
+      console.log('📊 TV: Answer stats:', data)
+      setGameState(prev => ({
+        ...prev,
+        answeredCount: data.answered,
+        correctCount: data.correct
+      }))
+    })
+
     websocket.on('question_result', (data) => {
       console.log('📈 TV: Result:', data)
       setGameState(prev => ({ ...prev, leaderboard: data.leaderboard }))
@@ -131,6 +140,7 @@ function TVScreen() {
         <QuestionScreen 
           question={gameState.currentQuestion}
           players={gameState.players}
+          gameState={gameState}
         />
       )}
       
