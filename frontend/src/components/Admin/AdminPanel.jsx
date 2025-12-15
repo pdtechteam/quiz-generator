@@ -1,366 +1,418 @@
 import React, { useState, useEffect } from 'react';
-import { Trash2, Plus, Play, List, Sparkles, RefreshCw, AlertCircle } from 'lucide-react';
+import { Plus, Trash2, Play, Download, Upload, Sparkles } from 'lucide-react';
+import QRCode from 'react-qr-code';
 import { API_CONFIG } from '../../utils/config';
 
 const AdminPanel = () => {
   const [quizzes, setQuizzes] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [showGenerateForm, setShowGenerateForm] = useState(false);
-  const [generating, setGenerating] = useState(false);
-
-  // Форма генерации
-  const [formData, setFormData] = useState({
-    topic: '',
-    count: 10,
+  const [sessions, setSessions] = useState([]);
+  const [showQR, setShowQR] = useState(false);
+  const [currentSession, setCurrentSession] = useState(null);
+  const [newQuiz, setNewQuiz] = useState({
+    title: '',
     description: '',
-    time_per_question: 20,
-    player_count: 4
+    time_limit: 30,
+    questions: []
   });
-
-  // Загрузка квизов
-  const loadQuizzes = async () => {
-    try {
-      setLoading(true);
-      const response = await fetch(`${API_CONFIG.API_BASE_URL}/quizzes/`);
-      if (!response.ok) throw new Error('Не удалось загрузить квизы');
-      const data = await response.json();
-      setQuizzes(data);
-      setError(null);
-    } catch (err) {
-      console.error('Load quizzes error:', err);
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [generatePrompt, setGeneratePrompt] = useState('');
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [apiError, setApiError] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     loadQuizzes();
+    loadSessions();
   }, []);
 
-  // Генерация квиза
-  const handleGenerate = async (e) => {
-    e.preventDefault();
+  const loadQuizzes = async () => {
+    try {
+      setIsLoading(true);
+      setApiError(null);
+      console.log('🔍 Загрузка квизов с:', `${API_CONFIG.API_BASE_URL}/quizzes/`);
 
-    if (!formData.topic.trim()) {
-      alert('Введите тему квиза');
+      const response = await fetch(`${API_CONFIG.API_BASE_URL}/quizzes/`);
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      console.log('✅ Квизы загружены:', data);
+
+      // ✅ ИСПРАВЛЕНИЕ: Django REST Framework возвращает {results: [...]}
+      if (data.results && Array.isArray(data.results)) {
+        setQuizzes(data.results);
+      } else if (Array.isArray(data)) {
+        setQuizzes(data);
+      } else {
+        console.error('❌ Неверный формат данных:', data);
+        setQuizzes([]);
+        setApiError('Неверный формат данных от сервера');
+      }
+    } catch (error) {
+      console.error('❌ Ошибка загрузки квизов:', error);
+      setQuizzes([]);
+      setApiError(`Не удалось загрузить квизы: ${error.message}`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const loadSessions = async () => {
+    try {
+      console.log('🔍 Загрузка сессий с:', `${API_CONFIG.API_BASE_URL}/sessions/`);
+      const response = await fetch(`${API_CONFIG.API_BASE_URL}/sessions/`);
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      console.log('✅ Сессии загружены:', data);
+
+      // ✅ ИСПРАВЛЕНИЕ: Django REST Framework возвращает {results: [...]}
+      if (data.results && Array.isArray(data.results)) {
+        setSessions(data.results);
+      } else if (Array.isArray(data)) {
+        setSessions(data);
+      } else {
+        setSessions([]);
+      }
+    } catch (error) {
+      console.error('❌ Ошибка загрузки сессий:', error);
+      setSessions([]);
+    }
+  };
+
+  const handleGenerateQuiz = async () => {
+    if (!generatePrompt.trim()) {
+      alert('Введите описание для генерации квиза');
       return;
     }
 
+    setIsGenerating(true);
     try {
-      setGenerating(true);
-      setError(null);
-
+      console.log('🎨 Генерация квиза:', generatePrompt);
       const response = await fetch(`${API_CONFIG.API_BASE_URL}/quizzes/generate/`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          prompt: generatePrompt,
+          num_questions: 5
+        })
       });
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.detail || 'Ошибка генерации');
+        throw new Error(errorData.error || 'Ошибка генерации');
       }
 
-      const newQuiz = await response.json();
-      setQuizzes([newQuiz, ...quizzes]);
-      setShowGenerateForm(false);
-      setFormData({
-        topic: '',
-        count: 10,
-        description: '',
-        time_per_question: 20,
-        player_count: 4
-      });
+      const data = await response.json();
+      console.log('✅ Квиз сгенерирован:', data);
 
-      alert(`✅ Квиз "${newQuiz.title}" создан с ${newQuiz.question_count} вопросами!`);
-    } catch (err) {
-      console.error('Generate error:', err);
-      setError(err.message);
-      alert(`❌ Ошибка: ${err.message}`);
+      setGeneratePrompt('');
+      await loadQuizzes();
+      alert('Квиз успешно сгенерирован!');
+    } catch (error) {
+      console.error('❌ Ошибка генерации:', error);
+      alert(`Ошибка генерации квиза: ${error.message}`);
     } finally {
-      setGenerating(false);
+      setIsGenerating(false);
     }
   };
 
-  // Удаление квиза
-  const handleDelete = async (id, title) => {
-    if (!window.confirm(`Удалить квиз "${title}"?`)) return;
+  const handleDeleteQuiz = async (quizId) => {
+    if (!confirm('Удалить этот квиз?')) return;
 
     try {
-      const response = await fetch(`${API_CONFIG.API_BASE_URL}/quizzes/${id}/`, {
+      const response = await fetch(`${API_CONFIG.API_BASE_URL}/quizzes/${quizId}/`, {
         method: 'DELETE'
       });
 
-      if (!response.ok) throw new Error('Не удалось удалить квиз');
+      if (!response.ok) {
+        throw new Error('Ошибка удаления');
+      }
 
-      setQuizzes(quizzes.filter(q => q.id !== id));
-      alert('✅ Квиз удалён');
-    } catch (err) {
-      console.error('Delete error:', err);
-      alert(`❌ Ошибка: ${err.message}`);
+      await loadQuizzes();
+    } catch (error) {
+      console.error('❌ Ошибка удаления:', error);
+      alert(`Ошибка удаления квиза: ${error.message}`);
     }
   };
 
-  // Запуск игры (создание сессии)
-  const handleStartGame = async (quizId, quizTitle) => {
+  const handleStartGame = async (quizId) => {
     try {
       const response = await fetch(`${API_CONFIG.API_BASE_URL}/sessions/`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ quiz: quizId })
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          quiz_id: quizId,
+          host_name: 'Admin'
+        })
       });
 
-      if (!response.ok) throw new Error('Не удалось создать сессию');
+      if (!response.ok) {
+        throw new Error('Ошибка создания сессии');
+      }
 
-      const session = await response.json();
-
-      // Открываем TV экран с кодом сессии
-      window.open(`/?mode=tv&code=${session.code}`, '_blank');
-
-      alert(`🎮 Игра запущена!\nКод: ${session.code}\n\nОткрыт TV экран в новом окне.`);
-    } catch (err) {
-      console.error('Start game error:', err);
-      alert(`❌ Ошибка: ${err.message}`);
+      const data = await response.json();
+      setCurrentSession(data);
+      setShowQR(true);
+      await loadSessions();
+    } catch (error) {
+      console.error('❌ Ошибка старта игры:', error);
+      alert(`Ошибка создания игры: ${error.message}`);
     }
   };
 
+  const handleImportQuiz = async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    try {
+      const text = await file.text();
+      const quiz = JSON.parse(text);
+
+      const response = await fetch(`${API_CONFIG.API_BASE_URL}/quizzes/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(quiz)
+      });
+
+      if (!response.ok) {
+        throw new Error('Ошибка импорта');
+      }
+
+      await loadQuizzes();
+      alert('Квиз успешно импортирован!');
+    } catch (error) {
+      console.error('❌ Ошибка импорта:', error);
+      alert(`Ошибка импорта квиза: ${error.message}`);
+    }
+  };
+
+  const handleExportQuiz = async (quizId) => {
+    try {
+      const response = await fetch(`${API_CONFIG.API_BASE_URL}/quizzes/${quizId}/`);
+
+      if (!response.ok) {
+        throw new Error('Ошибка экспорта');
+      }
+
+      const quiz = await response.json();
+      const blob = new Blob([JSON.stringify(quiz, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `quiz-${quiz.title}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('❌ Ошибка экспорта:', error);
+      alert(`Ошибка экспорта квиза: ${error.message}`);
+    }
+  };
+
+  const getJoinUrl = () => {
+    if (!currentSession) return '';
+    return `${API_CONFIG.APP_URL}/?session=${currentSession.code}`;
+  };
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
-      {/* Header */}
-      <header className="bg-black/30 backdrop-blur-xl border-b border-white/10">
-        <div className="max-w-7xl mx-auto px-6 py-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-4xl font-black text-white mb-1 tracking-tight">
-                Quiz Admin
-              </h1>
-              <p className="text-purple-300 text-sm">Управление квизами</p>
-            </div>
+    <div className="min-h-screen bg-gradient-to-br from-purple-600 via-pink-500 to-red-500 p-8">
+      <div className="max-w-7xl mx-auto">
+        {/* Header */}
+        <div className="bg-white rounded-3xl shadow-2xl p-8 mb-8">
+          <h1 className="text-4xl font-bold text-gray-800 mb-2">
+            🎮 Quiz Generator Admin
+          </h1>
+          <p className="text-gray-600">Создавай и управляй своими квизами</p>
+        </div>
 
-            <div className="flex gap-3">
-              <button
-                onClick={loadQuizzes}
-                disabled={loading}
-                className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg
-                         transition-all duration-200 flex items-center gap-2 border border-white/20"
-              >
-                <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
-                Обновить
-              </button>
+        {/* Error Message */}
+        {apiError && (
+          <div className="bg-red-100 border border-red-400 text-red-700 px-6 py-4 rounded-2xl mb-6">
+            <strong>⚠️ Ошибка подключения:</strong> {apiError}
+            <br />
+            <small className="text-sm">
+              Убедитесь что backend запущен на {API_CONFIG.API_BASE_URL}
+            </small>
+          </div>
+        )}
 
-              <button
-                onClick={() => setShowGenerateForm(!showGenerateForm)}
-                className="px-6 py-2 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600
-                         hover:to-pink-600 text-white rounded-lg font-bold transition-all duration-200
-                         flex items-center gap-2 shadow-lg shadow-purple-500/50"
-              >
-                <Sparkles size={18} />
-                {showGenerateForm ? 'Отменить' : 'Создать квиз'}
-              </button>
+        {/* AI Generator Section */}
+        <div className="bg-white rounded-3xl shadow-2xl p-8 mb-8">
+          <div className="flex items-center gap-3 mb-6">
+            <Sparkles className="w-8 h-8 text-purple-600" />
+            <h2 className="text-2xl font-bold text-gray-800">AI Генератор Квизов</h2>
+          </div>
+
+          <div className="flex gap-4">
+            <input
+              type="text"
+              value={generatePrompt}
+              onChange={(e) => setGeneratePrompt(e.target.value)}
+              placeholder="Опишите тему квиза (например: 'История России 20 века')"
+              className="flex-1 px-6 py-4 border-2 border-gray-300 rounded-2xl text-lg focus:outline-none focus:border-purple-500 transition-colors"
+              disabled={isGenerating}
+            />
+            <button
+              onClick={handleGenerateQuiz}
+              disabled={isGenerating}
+              className="px-8 py-4 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-2xl font-semibold hover:shadow-xl transform hover:scale-105 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+            >
+              {isGenerating ? '⏳ Генерация...' : '✨ Сгенерировать'}
+            </button>
+          </div>
+
+          {isGenerating && (
+            <div className="mt-4 text-center text-gray-600">
+              <div className="animate-pulse">🤖 AI работает над вашим квизом...</div>
             </div>
+          )}
+        </div>
+
+        {/* Import/Export Section */}
+        <div className="bg-white rounded-3xl shadow-2xl p-8 mb-8">
+          <h2 className="text-2xl font-bold text-gray-800 mb-6">📁 Импорт / Экспорт</h2>
+          <div className="flex gap-4">
+            <label className="flex-1 px-6 py-4 bg-blue-500 text-white rounded-2xl font-semibold text-center cursor-pointer hover:bg-blue-600 transition-colors">
+              <Upload className="w-5 h-5 inline mr-2" />
+              Импорт квиза
+              <input
+                type="file"
+                accept=".json"
+                onChange={handleImportQuiz}
+                className="hidden"
+              />
+            </label>
           </div>
         </div>
-      </header>
 
-      <main className="max-w-7xl mx-auto px-6 py-8">
-        {/* Ошибка */}
-        {error && (
-          <div className="mb-6 bg-red-500/20 border border-red-500/50 rounded-lg p-4 flex items-start gap-3">
-            <AlertCircle className="text-red-400 mt-0.5" size={20} />
-            <div>
-              <p className="text-red-200 font-medium">Ошибка</p>
-              <p className="text-red-300 text-sm">{error}</p>
+        {/* Quizzes List */}
+        <div className="bg-white rounded-3xl shadow-2xl p-8">
+          <h2 className="text-2xl font-bold text-gray-800 mb-6">📚 Мои Квизы</h2>
+
+          {isLoading ? (
+            <div className="text-center py-12">
+              <div className="animate-spin inline-block w-12 h-12 border-4 border-purple-600 border-t-transparent rounded-full mb-4"></div>
+              <p className="text-gray-600">Загрузка квизов...</p>
+            </div>
+          ) : quizzes.length === 0 ? (
+            <div className="text-center py-12">
+              <p className="text-gray-500 text-lg mb-4">📭 Квизов пока нет</p>
+              <p className="text-gray-400">Создайте свой первый квиз с помощью AI генератора!</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {quizzes.map(quiz => (
+                <div key={quiz.id} className="bg-gradient-to-br from-purple-100 to-pink-100 rounded-2xl p-6 hover:shadow-xl transition-shadow">
+                  <h3 className="text-xl font-bold text-gray-800 mb-2">{quiz.title}</h3>
+                  <p className="text-gray-600 mb-4">{quiz.description}</p>
+                  <div className="text-sm text-gray-500 mb-4">
+                    ❓ {quiz.questions?.length || 0} вопросов • ⏱️ {quiz.time_limit}с
+                  </div>
+
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => handleStartGame(quiz.id)}
+                      className="flex-1 px-4 py-2 bg-green-500 text-white rounded-xl font-semibold hover:bg-green-600 transition-colors flex items-center justify-center gap-2"
+                    >
+                      <Play className="w-4 h-4" />
+                      Запустить
+                    </button>
+
+                    <button
+                      onClick={() => handleExportQuiz(quiz.id)}
+                      className="px-4 py-2 bg-blue-500 text-white rounded-xl hover:bg-blue-600 transition-colors"
+                    >
+                      <Download className="w-4 h-4" />
+                    </button>
+
+                    <button
+                      onClick={() => handleDeleteQuiz(quiz.id)}
+                      className="px-4 py-2 bg-red-500 text-white rounded-xl hover:bg-red-600 transition-colors"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Active Sessions */}
+        {sessions.length > 0 && (
+          <div className="bg-white rounded-3xl shadow-2xl p-8 mt-8">
+            <h2 className="text-2xl font-bold text-gray-800 mb-6">🎯 Активные Игры</h2>
+            <div className="space-y-4">
+              {sessions.map(session => (
+                <div key={session.id} className="bg-gradient-to-r from-green-100 to-blue-100 rounded-2xl p-6">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <h3 className="text-xl font-bold text-gray-800">{session.quiz_title}</h3>
+                      <p className="text-gray-600">Код: <span className="font-mono font-bold">{session.code}</span></p>
+                      <p className="text-sm text-gray-500">👥 {session.players_count} игроков</p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setCurrentSession(session);
+                        setShowQR(true);
+                      }}
+                      className="px-6 py-3 bg-purple-600 text-white rounded-xl font-semibold hover:bg-purple-700 transition-colors"
+                    >
+                      📱 Показать QR
+                    </button>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         )}
 
-        {/* Форма генерации */}
-        {showGenerateForm && (
-          <div className="mb-8 bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6
-                        shadow-2xl shadow-purple-500/10">
-            <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-2">
-              <Sparkles className="text-purple-400" />
-              Генерация квиза через LLM
-            </h2>
+        {/* QR Code Modal */}
+        {showQR && currentSession && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-3xl p-8 max-w-md w-full">
+              <h3 className="text-2xl font-bold text-gray-800 mb-4 text-center">
+                🎮 Присоединиться к игре
+              </h3>
 
-            <form onSubmit={handleGenerate} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-purple-200 mb-2">
-                    Тема квиза *
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.topic}
-                    onChange={(e) => setFormData({...formData, topic: e.target.value})}
-                    placeholder="Например: Советские фильмы"
-                    className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-lg
-                             text-white placeholder-white/40 focus:outline-none focus:ring-2
-                             focus:ring-purple-500 focus:border-transparent"
-                    required
-                  />
-                </div>
+              <div className="bg-white p-6 rounded-2xl mb-4">
+                <QRCode
+                  value={getJoinUrl()}
+                  size={256}
+                  className="mx-auto"
+                />
+              </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-purple-200 mb-2">
-                    Описание
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.description}
-                    onChange={(e) => setFormData({...formData, description: e.target.value})}
-                    placeholder="Квиз о классике советского кино"
-                    className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-lg
-                             text-white placeholder-white/40 focus:outline-none focus:ring-2
-                             focus:ring-purple-500 focus:border-transparent"
-                  />
-                </div>
+              <div className="text-center mb-6">
+                <p className="text-gray-600 mb-2">Код для входа:</p>
+                <p className="text-4xl font-bold text-purple-600 font-mono">{currentSession.code}</p>
+              </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-purple-200 mb-2">
-                    Количество вопросов
-                  </label>
-                  <input
-                    type="number"
-                    min="3"
-                    max="20"
-                    value={formData.count}
-                    onChange={(e) => setFormData({...formData, count: parseInt(e.target.value)})}
-                    className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-lg
-                             text-white focus:outline-none focus:ring-2 focus:ring-purple-500
-                             focus:border-transparent"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-purple-200 mb-2">
-                    Время на вопрос (сек)
-                  </label>
-                  <input
-                    type="number"
-                    min="10"
-                    max="60"
-                    value={formData.time_per_question}
-                    onChange={(e) => setFormData({...formData, time_per_question: parseInt(e.target.value)})}
-                    className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-lg
-                             text-white focus:outline-none focus:ring-2 focus:ring-purple-500
-                             focus:border-transparent"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-purple-200 mb-2">
-                    Количество игроков (для адаптации)
-                  </label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="20"
-                    value={formData.player_count}
-                    onChange={(e) => setFormData({...formData, player_count: parseInt(e.target.value)})}
-                    className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-lg
-                             text-white focus:outline-none focus:ring-2 focus:ring-purple-500
-                             focus:border-transparent"
-                  />
-                </div>
+              <div className="text-center mb-6">
+                <p className="text-sm text-gray-500 break-all">{getJoinUrl()}</p>
               </div>
 
               <button
-                type="submit"
-                disabled={generating}
-                className="w-full py-4 bg-gradient-to-r from-purple-500 to-pink-500
-                         hover:from-purple-600 hover:to-pink-600 disabled:from-gray-500
-                         disabled:to-gray-600 text-white rounded-lg font-bold text-lg
-                         transition-all duration-200 shadow-lg shadow-purple-500/50
-                         disabled:shadow-none flex items-center justify-center gap-2"
+                onClick={() => setShowQR(false)}
+                className="w-full px-6 py-3 bg-gray-800 text-white rounded-2xl font-semibold hover:bg-gray-900 transition-colors"
               >
-                {generating ? (
-                  <>
-                    <RefreshCw size={20} className="animate-spin" />
-                    Генерация... (это может занять до минуты)
-                  </>
-                ) : (
-                  <>
-                    <Sparkles size={20} />
-                    Сгенерировать квиз
-                  </>
-                )}
+                Закрыть
               </button>
-            </form>
+            </div>
           </div>
         )}
-
-        {/* Список квизов */}
-        {loading && !showGenerateForm ? (
-          <div className="text-center py-12">
-            <RefreshCw className="animate-spin text-purple-400 mx-auto mb-4" size={48} />
-            <p className="text-white text-lg">Загрузка квизов...</p>
-          </div>
-        ) : quizzes.length === 0 ? (
-          <div className="text-center py-12 bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl">
-            <List className="text-purple-400 mx-auto mb-4" size={48} />
-            <p className="text-white text-lg mb-2">Квизов пока нет</p>
-            <p className="text-purple-300 text-sm">Создайте первый квиз с помощью кнопки выше</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {quizzes.map((quiz) => (
-              <div
-                key={quiz.id}
-                className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6
-                         hover:bg-white/10 transition-all duration-200 shadow-xl
-                         hover:shadow-2xl hover:shadow-purple-500/20 group"
-              >
-                <div className="mb-4">
-                  <h3 className="text-xl font-bold text-white mb-2 group-hover:text-purple-300
-                               transition-colors line-clamp-2">
-                    {quiz.title}
-                  </h3>
-                  <p className="text-purple-300 text-sm mb-3 line-clamp-2">
-                    {quiz.topic}
-                  </p>
-
-                  <div className="flex items-center gap-4 text-sm text-white/60">
-                    <span className="flex items-center gap-1">
-                      <List size={16} />
-                      {quiz.question_count} вопросов
-                    </span>
-                    <span>⏱️ {quiz.time_per_question}s</span>
-                  </div>
-                </div>
-
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => handleStartGame(quiz.id, quiz.title)}
-                    className="flex-1 px-4 py-2 bg-green-500 hover:bg-green-600 text-white
-                             rounded-lg font-medium transition-all duration-200 flex items-center
-                             justify-center gap-2 shadow-lg shadow-green-500/30"
-                  >
-                    <Play size={16} />
-                    Играть
-                  </button>
-
-                  <button
-                    onClick={() => handleDelete(quiz.id, quiz.title)}
-                    className="px-4 py-2 bg-red-500/20 hover:bg-red-500/30 text-red-300
-                             hover:text-red-200 rounded-lg transition-all duration-200
-                             flex items-center justify-center border border-red-500/50"
-                  >
-                    <Trash2 size={16} />
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </main>
-
-      {/* Footer */}
-      <footer className="max-w-7xl mx-auto px-6 py-6 text-center text-white/40 text-sm">
-        <p>Quiz Generator Admin Panel • Создано с ❤️ и LLM</p>
-      </footer>
+      </div>
     </div>
   );
 };
