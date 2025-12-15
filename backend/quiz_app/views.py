@@ -94,8 +94,8 @@ class QuizViewSet(viewsets.ModelViewSet):
 
         Body:
         {
-            "topic": "Советские фильмы",
-            "count": 10,
+            "prompt": "Советские фильмы",  // <-- ИЗМЕНЕНО: принимаем prompt или topic
+            "num_questions": 10,             // <-- ИЗМЕНЕНО: было count
             "description": "Квиз о классике советского кино",
             "time_per_question": 20,
             "player_count": 4
@@ -103,15 +103,19 @@ class QuizViewSet(viewsets.ModelViewSet):
         '''
         from .generation import generate_and_save_quiz
 
-        topic = request.data.get('topic')
-        count = request.data.get('count', 10)
+        # ИЗМЕНЕНО: принимаем prompt или topic
+        topic = request.data.get('prompt') or request.data.get('topic')
+
+        # ИЗМЕНЕНО: принимаем num_questions или count
+        count = request.data.get('num_questions') or request.data.get('count', 10)
+
         description = request.data.get('description', '')
         time_per_question = request.data.get('time_per_question', 20)
         player_count = request.data.get('player_count', 1)
 
         if not topic:
             return Response(
-                {'detail': 'Требуется topic'},
+                {'error': 'Требуется prompt или topic'},  # ИЗМЕНЕНО: detail → error
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -134,12 +138,12 @@ class QuizViewSet(viewsets.ModelViewSet):
 
         except ValueError as e:
             return Response(
-                {'detail': str(e)},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                {'error': str(e)},  # ИЗМЕНЕНО: detail → error
+                status=status.HTTP_400_BAD_REQUEST  # ИЗМЕНЕНО: 500 → 400
             )
         except Exception as e:
             return Response(
-                {'detail': f'Ошибка генерации: {str(e)}'},
+                {'error': f'Ошибка генерации: {str(e)}'},  # ИЗМЕНЕНО: detail → error
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
@@ -244,6 +248,59 @@ class GameSessionViewSet(viewsets.ModelViewSet):
         disconnected = session.players.filter(connected=False)
         serializer = PlayerSerializer(disconnected, many=True)
         return Response(serializer.data)
+
+    @action(detail=True, methods=['post'])
+    def end(self, request, code=None):
+        """
+        POST /api/sessions/{code}/end/
+        Завершить сессию досрочно
+        """
+        from django.utils import timezone
+        from channels.layers import get_channel_layer
+        from asgiref.sync import async_to_sync
+
+        session = self.get_object()
+
+        # Меняем состояние на finished
+        session.state = 'finished'
+        session.finished_at = timezone.now()
+        session.save()
+
+        # Получаем финальную таблицу лидеров
+        players = session.players.all().order_by('-score', 'joined_at')
+        leaderboard = [
+            {
+                'position': idx + 1,
+                'player_id': player.id,
+                'name': player.name,
+                'score': player.score,
+                'current_streak': player.current_streak,
+                'connected': player.connected,
+                'is_host': player.is_host,
+            }
+            for idx, player in enumerate(players)
+        ]
+
+        # Broadcast game_over всем подключенным
+        try:
+            channel_layer = get_channel_layer()
+            room_group_name = f'game_{session.code}'
+            async_to_sync(channel_layer.group_send)(
+                room_group_name,
+                {
+                    'type': 'game_over',
+                    'leaderboard': leaderboard,
+                    'awards': {}
+                }
+            )
+        except Exception as e:
+            print(f"Warning: Could not send WebSocket notification: {e}")
+
+        return Response({
+            'status': 'finished',
+            'code': session.code,
+            'message': 'Сессия завершена'
+        })
 
 
 class PlayerViewSet(viewsets.ModelViewSet):

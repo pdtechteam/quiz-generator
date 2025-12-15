@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Trash2, Play, Download, Upload, Sparkles } from 'lucide-react';
+import { Plus, Trash2, Play, Download, Upload, Sparkles, X, Users } from 'lucide-react';
 import QRCode from 'react-qr-code';
 import { API_CONFIG } from '../../utils/config';
 
@@ -23,6 +23,10 @@ const AdminPanel = () => {
   useEffect(() => {
     loadQuizzes();
     loadSessions();
+
+    // Автообновление сессий каждые 5 секунд
+    const interval = setInterval(loadSessions, 5000);
+    return () => clearInterval(interval);
   }, []);
 
   const loadQuizzes = async () => {
@@ -40,7 +44,6 @@ const AdminPanel = () => {
       const data = await response.json();
       console.log('✅ Квизы загружены:', data);
 
-      // ✅ ИСПРАВЛЕНИЕ: Django REST Framework возвращает {results: [...]}
       if (data.results && Array.isArray(data.results)) {
         setQuizzes(data.results);
       } else if (Array.isArray(data)) {
@@ -71,11 +74,13 @@ const AdminPanel = () => {
       const data = await response.json();
       console.log('✅ Сессии загружены:', data);
 
-      // ✅ ИСПРАВЛЕНИЕ: Django REST Framework возвращает {results: [...]}
       if (data.results && Array.isArray(data.results)) {
-        setSessions(data.results);
+        // Фильтруем только активные сессии (state != 'finished')
+        const activeSessions = data.results.filter(s => s.state !== 'finished');
+        setSessions(activeSessions);
       } else if (Array.isArray(data)) {
-        setSessions(data);
+        const activeSessions = data.filter(s => s.state !== 'finished');
+        setSessions(activeSessions);
       } else {
         setSessions([]);
       }
@@ -170,6 +175,32 @@ const AdminPanel = () => {
     }
   };
 
+  // ✅ НОВАЯ ФУНКЦИЯ: Завершение сессии
+  const handleEndSession = async (sessionCode) => {
+    if (!confirm('Завершить эту игру? Все игроки будут отключены.')) return;
+
+    try {
+      console.log('🛑 Завершение сессии:', sessionCode);
+      const response = await fetch(`${API_CONFIG.API_BASE_URL}/sessions/${sessionCode}/end/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error('Ошибка завершения сессии');
+      }
+
+      console.log('✅ Сессия завершена');
+      await loadSessions();
+      alert('Игра успешно завершена!');
+    } catch (error) {
+      console.error('❌ Ошибка завершения:', error);
+      alert(`Ошибка завершения игры: ${error.message}`);
+    }
+  };
+
   const handleImportQuiz = async (event) => {
     const file = event.target.files[0];
     if (!file) return;
@@ -223,6 +254,22 @@ const AdminPanel = () => {
   const getJoinUrl = () => {
     if (!currentSession) return '';
     return `${API_CONFIG.APP_URL}/?session=${currentSession.code}`;
+  };
+
+  // ✅ НОВАЯ ФУНКЦИЯ: Получение статуса сессии
+  const getSessionStatus = (session) => {
+    switch (session.state) {
+      case 'waiting':
+        return { text: 'Ожидание игроков', color: 'bg-yellow-100 text-yellow-800' };
+      case 'playing':
+        return { text: 'Игра идёт', color: 'bg-green-100 text-green-800' };
+      case 'paused':
+        return { text: 'Пауза', color: 'bg-orange-100 text-orange-800' };
+      case 'finished':
+        return { text: 'Завершена', color: 'bg-gray-100 text-gray-800' };
+      default:
+        return { text: session.state, color: 'bg-blue-100 text-blue-800' };
+    }
   };
 
   return (
@@ -296,6 +343,71 @@ const AdminPanel = () => {
           </div>
         </div>
 
+        {/* Active Sessions - УЛУЧШЕННЫЙ БЛОК */}
+        {sessions.length > 0 && (
+          <div className="bg-white rounded-3xl shadow-2xl p-8 mb-8">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-2xl font-bold text-gray-800">🎯 Активные Игры</h2>
+              <span className="text-sm text-gray-500">
+                Обновление каждые 5 секунд
+              </span>
+            </div>
+            <div className="space-y-4">
+              {sessions.map(session => {
+                const status = getSessionStatus(session);
+                return (
+                  <div key={session.id} className="bg-gradient-to-r from-green-100 to-blue-100 rounded-2xl p-6 border border-green-200">
+                    <div className="flex justify-between items-start gap-4">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-3 mb-2">
+                          <h3 className="text-xl font-bold text-gray-800">{session.quiz_title}</h3>
+                          <span className={`px-3 py-1 rounded-full text-xs font-bold ${status.color}`}>
+                            {status.text}
+                          </span>
+                        </div>
+                        <div className="space-y-1 text-sm text-gray-600">
+                          <p>Код: <span className="font-mono font-bold text-lg">{session.code}</span></p>
+                          <div className="flex items-center gap-2">
+                            <Users size={16} />
+                            <span>{session.players_count || 0} игроков</span>
+                          </div>
+                          {session.created_at && (
+                            <p className="text-xs text-gray-500">
+                              Создана: {new Date(session.created_at).toLocaleString('ru-RU')}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Кнопки управления */}
+                      <div className="flex gap-2 flex-shrink-0">
+                        <button
+                          onClick={() => {
+                            setCurrentSession(session);
+                            setShowQR(true);
+                          }}
+                          className="px-4 py-2 bg-purple-600 text-white rounded-xl font-semibold hover:bg-purple-700 transition-colors flex items-center gap-2"
+                        >
+                          📱 QR
+                        </button>
+
+                        {/* ✅ НОВАЯ КНОПКА: Завершить сессию */}
+                        <button
+                          onClick={() => handleEndSession(session.code)}
+                          className="px-4 py-2 bg-red-600 text-white rounded-xl font-semibold hover:bg-red-700 transition-colors flex items-center gap-2"
+                        >
+                          <X size={18} />
+                          Завершить
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {/* Quizzes List */}
         <div className="bg-white rounded-3xl shadow-2xl p-8">
           <h2 className="text-2xl font-bold text-gray-800 mb-6">📚 Мои Квизы</h2>
@@ -348,35 +460,6 @@ const AdminPanel = () => {
             </div>
           )}
         </div>
-
-        {/* Active Sessions */}
-        {sessions.length > 0 && (
-          <div className="bg-white rounded-3xl shadow-2xl p-8 mt-8">
-            <h2 className="text-2xl font-bold text-gray-800 mb-6">🎯 Активные Игры</h2>
-            <div className="space-y-4">
-              {sessions.map(session => (
-                <div key={session.id} className="bg-gradient-to-r from-green-100 to-blue-100 rounded-2xl p-6">
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <h3 className="text-xl font-bold text-gray-800">{session.quiz_title}</h3>
-                      <p className="text-gray-600">Код: <span className="font-mono font-bold">{session.code}</span></p>
-                      <p className="text-sm text-gray-500">👥 {session.players_count} игроков</p>
-                    </div>
-                    <button
-                      onClick={() => {
-                        setCurrentSession(session);
-                        setShowQR(true);
-                      }}
-                      className="px-6 py-3 bg-purple-600 text-white rounded-xl font-semibold hover:bg-purple-700 transition-colors"
-                    >
-                      📱 Показать QR
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
 
         {/* QR Code Modal */}
         {showQR && currentSession && (

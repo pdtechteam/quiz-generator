@@ -116,8 +116,18 @@ function TVScreen() {
     setWs(websocket)
   }
 
+  // ✅ ИСПРАВЛЕНИЕ: Условный overflow в зависимости от view
+  const containerClass = currentView === 'admin'
+    ? 'w-screen h-screen overflow-y-auto'
+    : 'w-screen h-screen overflow-hidden';
+
   return (
-    <div className="w-screen h-screen overflow-hidden">
+    <div className={containerClass}>
+      {/* ☝️ ИЗМЕНЕНО: Используем динамический className
+          - Для admin: overflow-y-auto (можно прокручивать)
+          - Для остальных: overflow-hidden (нельзя, для полноэкранных view)
+      */}
+
       {currentView === 'start' && (
         <StartScreen 
           onSelectAdmin={() => setCurrentView('admin')}

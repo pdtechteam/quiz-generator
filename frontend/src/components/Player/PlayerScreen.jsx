@@ -153,10 +153,25 @@ function PlayerScreen() {
       )}
 
       {currentView === 'final' && (
-        <div className="w-screen h-screen bg-gradient-to-br from-yellow-500 to-orange-500 flex items-center justify-center text-white">
-          <div className="text-center">
-            <h1 className="text-6xl font-bold mb-8">🎉 Игра окончена! 🎉</h1>
-            <p className="text-3xl">Спасибо за игру, {playerData?.name}!</p>
+        <div className="w-screen h-screen bg-gradient-to-br from-yellow-500 to-orange-500 flex items-center justify-center text-white p-6">
+          {/* ☝️ ДОБАВЛЕНО: p-6 для отступов */}
+          <div className="text-center px-4">
+            {/* ☝️ ДОБАВЛЕНО: px-4 для горизонтальных отступов */}
+            <h1 className="text-4xl sm:text-5xl md:text-6xl font-bold mb-6 sm:mb-8 break-words">
+              {/* ☝️ ИЗМЕНЕНО:
+                  - text-6xl → text-4xl sm:text-5xl md:text-6xl (адаптивный)
+                  - mb-8 → mb-6 sm:mb-8 (адаптивный отступ)
+                  - добавлен break-words
+              */}
+              🎉 Игра окончена! 🎉
+            </h1>
+            <p className="text-2xl sm:text-3xl break-words">
+              {/* ☝️ ИЗМЕНЕНО:
+                  - text-3xl → text-2xl sm:text-3xl (адаптивный)
+                  - добавлен break-words
+              */}
+              Спасибо за игру, {playerData?.name}!
+            </p>
           </div>
         </div>
       )}
