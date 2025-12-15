@@ -159,8 +159,15 @@ CORS_ALLOW_ALL_ORIGINS = True  # Для разработки
 # OpenAI настройки
 from decouple import config
 
-OPENAI_API_KEY = config('OPENAI_API_KEY', default='')
-OPENAI_MODEL = config('OPENAI_MODEL', default='gpt-4-turbo')
+#OPENAI_API_KEY = config('OPENAI_API_KEY', default='')
+#OPENAI_MODEL = config('OPENAI_MODEL', default='gpt-4-turbo')
+
+# ===== НАСТРОЙКИ LLM =====
+
+# Для локальной MLC LLM
+OPENAI_API_KEY = "not-needed"  # MLC не требует ключ
+OPENAI_API_BASE = "http://localhost:8080/v1"  # ← Адрес твоего MLC сервера
+OPENAI_MODEL = "Llama-3-8B-Instruct-q4f16_1-MLC"  # Название модели
 
 # Кеширование (для генерации вопросов)
 CACHES = {

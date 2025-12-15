@@ -10,6 +10,7 @@ import logging
 from typing import List, Optional
 
 import openai
+from openai import OpenAI
 from pydantic import BaseModel, Field, validator
 from django.core.cache import cache
 from django.conf import settings
@@ -23,6 +24,14 @@ logger = logging.getLogger(__name__)
 PROMPT_VERSION = "2024-v3"
 QUESTION_SCHEMA_VERSION = "v1"
 
+# Мапинг сложности на время (в секундах)
+DIFFICULTY_TIME_MAP = {
+    'easy': 15,       # Лёгкий: 15 сек
+    'medium': 20,     # Средний: 20 сек
+    'hard': 30,       # Сложный: 30 сек
+    'very_hard': 45,  # Очень сложный: 45 сек
+    'fun': 10         # Шуточный: 10 сек
+}
 
 # ============================================================================
 # PYDANTIC СХЕМЫ ДЛЯ ВАЛИДАЦИИ
@@ -109,28 +118,50 @@ def generate_questions(topic, count, difficulty='medium', player_count=1, retrie
     # Строим промпт
     prompt = build_prompt(topic, count, difficulty_curve, player_count)
 
-    # Получаем API ключ из настроек
+    # Получаем настройки из settings
     api_key = getattr(settings, 'OPENAI_API_KEY', None)
     if not api_key:
         raise ValueError("OPENAI_API_KEY не найден в настройках")
 
-    openai.api_key = api_key
+    api_base = getattr(settings, 'OPENAI_API_BASE', None)
     model = getattr(settings, 'OPENAI_MODEL', 'gpt-4-turbo')
+
+    # ✅ НОВЫЙ API: создаём клиент
+    client = OpenAI(
+        api_key=api_key,
+        base_url=api_base  # Для локальной LLM
+    )
 
     for attempt in range(retries):
         try:
-            # Вызов OpenAI API
-            response = openai.ChatCompletion.create(
+            # ✅ НОВЫЙ API: вызов через client
+            response = client.chat.completions.create(
                 model=model,
-                messages=[{"role": "user", "content": prompt}],
-                response_format={"type": "json_object"},  # Форсируем JSON
-                temperature=0.7,  # Немного креативности
+                messages=[
+                    {"role": "system",
+                     "content": "You are a helpful assistant that generates quiz questions in JSON format. Always respond with valid JSON only."},
+                    {"role": "user", "content": prompt}
+                ],
+                # response_format={"type": "json_object"},  # Закомментировано для MLC
+                temperature=0.7,
                 max_tokens=3000,
-                timeout=30
+                timeout=60
             )
 
-            # Парсим ответ
-            content = response.choices[0].message['content']
+            # ✅ НОВЫЙ API: получение ответа
+            content = response.choices[0].message.content
+
+            # Очистка от markdown (на случай если модель добавит ```)
+            content = content.strip()
+            if content.startswith('```json'):
+                content = content.replace('```json', '', 1)
+            if content.startswith('```'):
+                content = content.replace('```', '', 1)
+            if content.endswith('```'):
+                content = content.rsplit('```', 1)[0]
+            content = content.strip()
+
+            # Парсим JSON
             data = json.loads(content)
 
             # Валидация через Pydantic
@@ -142,35 +173,16 @@ def generate_questions(topic, count, difficulty='medium', player_count=1, retrie
             logger.info(f"Successfully generated {count} questions for '{topic}'")
             return questions
 
-        except (
-                openai.error.RateLimitError,
-                openai.error.APIError,
-                openai.error.Timeout,
-                openai.error.APIConnectionError
-        ) as e:
+        except Exception as e:
+            logger.error(f"Attempt {attempt + 1}/{retries} failed: {type(e).__name__}: {e}")
+
             if attempt == retries - 1:
-                logger.error(f"OpenAI API error after {retries} attempts: {e}")
-                raise ValueError(f"Не удалось подключиться к OpenAI: {str(e)}")
+                raise ValueError(f"Не удалось сгенерировать вопросы после {retries} попыток: {str(e)}")
 
             # Exponential backoff + jitter
             wait_time = (2 ** attempt) + random.uniform(0, 1)
-            logger.warning(
-                f"{type(e).__name__}: retry {attempt + 1}/{retries}, "
-                f"waiting {wait_time:.2f}s"
-            )
+            logger.warning(f"Waiting {wait_time:.2f}s before retry...")
             time.sleep(wait_time)
-
-        except json.JSONDecodeError as e:
-            logger.error(f"Invalid JSON from LLM: {e}")
-            if attempt == retries - 1:
-                raise ValueError("LLM вернул невалидный JSON")
-            time.sleep(1)
-
-        except Exception as e:
-            logger.error(f"Schema validation failed: {e}")
-            if attempt == retries - 1:
-                raise ValueError(f"Сгенерированные вопросы не прошли валидацию: {str(e)}")
-            time.sleep(1)
 
     raise ValueError("Исчерпаны все попытки генерации")
 
@@ -221,6 +233,9 @@ def save_questions_to_quiz(quiz, questions):
     created_count = 0
 
     for idx, q in enumerate(questions):
+        # ✅ ДОБАВЛЕНО: Вычисляем время по сложности
+        question_time = DIFFICULTY_TIME_MAP.get(q.difficulty, 0)
+
         # Создаём вопрос
         question = Question.objects.create(
             quiz=quiz,
@@ -229,7 +244,7 @@ def save_questions_to_quiz(quiz, questions):
             difficulty=q.difficulty,
             explanation=q.explanation,
             image_url=q.image_url or '',
-            time_limit=quiz.time_per_question,
+            time_limit=question_time,  # ✅ ИЗМЕНЕНО: используем время по сложности
             generated_by_model=True
         )
 
