@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import GameWebSocket from '../../utils/websocket'
 import StartScreen from './StartScreen'
-import AdminPanel from './AdminPanel'
+import AdminPanel from '../Admin/AdminPanel'
 import LobbyScreen from './LobbyScreen'
 import QuestionScreen from './QuestionScreen'
 import ResultScreen from './ResultScreen'

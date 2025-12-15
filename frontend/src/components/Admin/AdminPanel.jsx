@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Trash2, Plus, Play, List, Sparkles, RefreshCw, AlertCircle } from 'lucide-react';
-
-const API_BASE_URL = 'http://192.168.1.100:8000/api'; // ← ЗАМЕНИ НА СВОЙ IP
+import { API_CONFIG } from '../../utils/config';
 
 const AdminPanel = () => {
   const [quizzes, setQuizzes] = useState([]);
@@ -23,12 +22,13 @@ const AdminPanel = () => {
   const loadQuizzes = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`${API_BASE_URL}/quizzes/`);
+      const response = await fetch(`${API_CONFIG.API_BASE_URL}/quizzes/`);
       if (!response.ok) throw new Error('Не удалось загрузить квизы');
       const data = await response.json();
       setQuizzes(data);
       setError(null);
     } catch (err) {
+      console.error('Load quizzes error:', err);
       setError(err.message);
     } finally {
       setLoading(false);
@@ -52,7 +52,7 @@ const AdminPanel = () => {
       setGenerating(true);
       setError(null);
 
-      const response = await fetch(`${API_BASE_URL}/quizzes/generate/`, {
+      const response = await fetch(`${API_CONFIG.API_BASE_URL}/quizzes/generate/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData)
@@ -76,6 +76,7 @@ const AdminPanel = () => {
 
       alert(`✅ Квиз "${newQuiz.title}" создан с ${newQuiz.question_count} вопросами!`);
     } catch (err) {
+      console.error('Generate error:', err);
       setError(err.message);
       alert(`❌ Ошибка: ${err.message}`);
     } finally {
@@ -85,10 +86,10 @@ const AdminPanel = () => {
 
   // Удаление квиза
   const handleDelete = async (id, title) => {
-    if (!confirm(`Удалить квиз "${title}"?`)) return;
+    if (!window.confirm(`Удалить квиз "${title}"?`)) return;
 
     try {
-      const response = await fetch(`${API_BASE_URL}/quizzes/${id}/`, {
+      const response = await fetch(`${API_CONFIG.API_BASE_URL}/quizzes/${id}/`, {
         method: 'DELETE'
       });
 
@@ -97,6 +98,7 @@ const AdminPanel = () => {
       setQuizzes(quizzes.filter(q => q.id !== id));
       alert('✅ Квиз удалён');
     } catch (err) {
+      console.error('Delete error:', err);
       alert(`❌ Ошибка: ${err.message}`);
     }
   };
@@ -104,7 +106,7 @@ const AdminPanel = () => {
   // Запуск игры (создание сессии)
   const handleStartGame = async (quizId, quizTitle) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/sessions/`, {
+      const response = await fetch(`${API_CONFIG.API_BASE_URL}/sessions/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ quiz: quizId })
@@ -119,6 +121,7 @@ const AdminPanel = () => {
 
       alert(`🎮 Игра запущена!\nКод: ${session.code}\n\nОткрыт TV экран в новом окне.`);
     } catch (err) {
+      console.error('Start game error:', err);
       alert(`❌ Ошибка: ${err.message}`);
     }
   };

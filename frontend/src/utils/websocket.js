@@ -1,3 +1,5 @@
+import { API_CONFIG } from './config'
+
 class GameWebSocket {
   constructor(sessionCode) {
     this.sessionCode = sessionCode
@@ -9,24 +11,19 @@ class GameWebSocket {
   }
 
   connect() {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const host = window.location.hostname
-    const port = import.meta.env.DEV ? '8000' : window.location.port
-
-    // В dev режиме подключаемся к Django напрямую
-    const wsUrl = `ws://192.168.2.100:8000/ws/game/${this.sessionCode}/` // ДЛЯ ЛОКАЛЬНОГО ДОСТУПА
+    const wsUrl = `${API_CONFIG.WS_BASE_URL}/game/${this.sessionCode}/`
 
     console.log('🔌 Connecting to:', wsUrl)
-    
+
     this.ws = new WebSocket(wsUrl)
-    
+
     this.ws.onopen = () => {
       console.log('✅ WebSocket connected')
       this.reconnectAttempts = 0
       this.startHeartbeat()
       this.emit('connected')
     }
-    
+
     this.ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data)
@@ -36,12 +33,12 @@ class GameWebSocket {
         console.error('Failed to parse message:', error)
       }
     }
-    
+
     this.ws.onerror = (error) => {
       console.error('❌ WebSocket error:', error)
       this.emit('error', error)
     }
-    
+
     this.ws.onclose = () => {
       console.log('🔌 WebSocket closed')
       this.stopHeartbeat()
@@ -55,7 +52,7 @@ class GameWebSocket {
       this.reconnectAttempts++
       const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 10000)
       console.log(`🔄 Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts})`)
-      
+
       setTimeout(() => {
         this.connect()
       }, delay)
@@ -68,7 +65,7 @@ class GameWebSocket {
   startHeartbeat() {
     this.heartbeatInterval = setInterval(() => {
       this.send('ping', {})
-    }, 5000) // Каждые 5 секунд
+    }, 5000)
   }
 
   stopHeartbeat() {

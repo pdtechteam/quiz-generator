@@ -1,9 +1,9 @@
-const API_BASE_URL = 'http://192.168.2.100:8000/api' // ДЛЯ ЛОКАЛЬНОГО ДОСТУПА
+import { API_CONFIG } from './config'
 
 class API {
   async request(endpoint, options = {}) {
-    const url = `${API_BASE_URL}${endpoint}`
-    
+    const url = `${API_CONFIG.API_BASE_URL}${endpoint}`
+
     const config = {
       headers: {
         'Content-Type': 'application/json',
@@ -11,12 +11,13 @@ class API {
       },
       ...options,
     }
-    
+
     try {
       const response = await fetch(url, config)
-      
+
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+        const errorText = await response.text()
+        throw new Error(`HTTP ${response.status}: ${errorText}`)
       }
       
       return await response.json()
