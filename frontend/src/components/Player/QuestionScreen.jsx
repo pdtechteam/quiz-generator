@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Clock, CheckCircle } from 'lucide-react'
 import { playSound } from '../../utils/sounds'
 
@@ -6,35 +6,63 @@ function QuestionScreen({ question, onAnswer }) {
   const [selectedChoice, setSelectedChoice] = useState(null)
   const [answered, setAnswered] = useState(false)
   const [timeLeft, setTimeLeft] = useState(question?.time_limit || 20)
-  const [startTime] = useState(Date.now())
+  const startTimeRef = useRef(Date.now())
+  const hasAnsweredRef = useRef(false)
 
   useEffect(() => {
     if (!question) return
 
+    console.log('🎯 New question, resetting state')
     setSelectedChoice(null)
     setAnswered(false)
     setTimeLeft(question.time_limit || 20)
+    startTimeRef.current = Date.now()
+    hasAnsweredRef.current = false
 
     const timer = setInterval(() => {
       setTimeLeft(prev => {
-        if (prev <= 0) {
+        if (prev <= 0.1) {
           clearInterval(timer)
+
+          // ✅ АВТОМАТИЧЕСКИЙ ОТВЕТ ПРИ ТАЙМАУТЕ
+          if (!hasAnsweredRef.current) {
+            console.log('⏰ Time is up! Auto-submitting answer...')
+            hasAnsweredRef.current = true
+            setAnswered(true)
+
+            const timeTaken = (Date.now() - startTimeRef.current) / 1000
+
+            // Отправляем первый вариант (будет неправильный)
+            if (question.choices && question.choices.length > 0) {
+              console.log('📤 Sending timeout answer:', question.choices[0].id)
+              onAnswer(question.choices[0].id, timeTaken)
+            }
+          }
+
           return 0
         }
         return prev - 0.1
       })
     }, 100)
 
-    return () => clearInterval(timer)
-  }, [question])
+    return () => {
+      console.log('🧹 Cleaning up timer')
+      clearInterval(timer)
+    }
+  }, [question, onAnswer])
 
   const handleChoiceClick = (choice) => {
-    if (answered || timeLeft <= 0) return
+    if (hasAnsweredRef.current || timeLeft <= 0) {
+      console.log('⚠️ Cannot answer: already answered or time is up')
+      return
+    }
 
+    console.log('✅ Choice clicked:', choice.id)
     setSelectedChoice(choice.id)
     setAnswered(true)
+    hasAnsweredRef.current = true
 
-    const timeTaken = (Date.now() - startTime) / 1000
+    const timeTaken = (Date.now() - startTimeRef.current) / 1000
     onAnswer(choice.id, timeTaken)
 
     playSound('tap')
@@ -48,122 +76,101 @@ function QuestionScreen({ question, onAnswer }) {
     return 'from-green-500 to-emerald-500'
   }
 
-  const choiceColors = [
-    'from-red-500 to-pink-500',
-    'from-blue-500 to-cyan-500',
-    'from-yellow-500 to-orange-500',
-    'from-green-500 to-emerald-500'
-  ]
-
-  const choiceEmojis = ['🔴', '🔵', '🟡', '🟢']
+  const getTimerWidth = () => {
+    return Math.max(0, (timeLeft / (question?.time_limit || 20)) * 100)
+  }
 
   if (!question) {
     return (
-      <div className="w-screen h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center text-white">
-        <div className="text-3xl">Загрузка вопроса...</div>
+      <div className="w-screen h-screen bg-gradient-to-br from-purple-600 via-pink-500 to-red-500 flex items-center justify-center">
+        <div className="text-white text-2xl">Загрузка вопроса...</div>
       </div>
     )
   }
 
   return (
-    <div className="w-screen h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex flex-col relative overflow-hidden">
-      {/* Background effects */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-1/4 right-1/4 w-96 h-96 bg-purple-500/20 rounded-full blur-3xl animate-pulse" />
-        <div className="absolute bottom-1/4 left-1/4 w-96 h-96 bg-pink-500/20 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }} />
+    <div className="w-screen h-screen bg-gradient-to-br from-purple-600 via-pink-500 to-red-500 flex flex-col overflow-hidden">
+      {/* Timer Bar */}
+      <div className="w-full h-3 bg-black/20">
+        <div
+          className={`h-full bg-gradient-to-r ${getTimerColor()} transition-all duration-100 ease-linear`}
+          style={{ width: `${getTimerWidth()}%` }}
+        />
       </div>
 
-      {/* Main content - scrollable */}
+      {/* Timer Display */}
+      <div className="absolute top-6 right-6 z-20">
+        <div className="bg-white/90 backdrop-blur-sm rounded-2xl px-6 py-3 shadow-2xl">
+          <div className="flex items-center gap-2">
+            <Clock className="w-6 h-6 text-purple-600" />
+            <span className={`text-2xl font-bold ${
+              timeLeft <= 3 ? 'text-red-600 animate-pulse' : 'text-gray-800'
+            }`}>
+              {Math.ceil(timeLeft)}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* Question */}
       <div className="relative z-10 flex-1 overflow-y-auto overflow-x-hidden">
-        {/* ☝️ ИЗМЕНЕНО: Сделали контейнер прокручиваемым */}
-
-        <div className="min-h-full flex flex-col p-4">
-          {/* Timer bar */}
-          <div className="mb-6 flex-shrink-0">
-            <div className="h-3 bg-white/10 rounded-full overflow-hidden border border-white/20">
-              <div
-                className={`h-full bg-gradient-to-r ${getTimerColor()} transition-all duration-100 shadow-lg`}
-                style={{ width: `${(timeLeft / (question.time_limit || 20)) * 100}%` }}
+        <div className="max-w-4xl mx-auto w-full pb-44 px-4 pt-8">
+          <div className="bg-white/95 backdrop-blur-sm rounded-3xl shadow-2xl p-8 mb-8">
+            <h2 className="text-3xl sm:text-4xl font-bold text-gray-800 text-center break-words">
+              {question.text}
+            </h2>
+            {question.image_url && (
+              <img
+                src={question.image_url}
+                alt="Question"
+                className="mt-6 w-full max-h-64 object-cover rounded-2xl"
               />
-            </div>
-
-            <div className="flex items-center justify-center gap-2 mt-3">
-              <Clock className="text-white" size={24} />
-              <p className="text-white text-3xl font-black font-mono">
-                {Math.ceil(timeLeft)}s
-              </p>
-            </div>
+            )}
           </div>
 
-          {/* Question card */}
-          <div className="flex-shrink-0 max-w-4xl mx-auto w-full mb-6">
-            <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-3xl p-8 shadow-2xl">
-              <p className="text-white text-3xl font-bold text-center leading-relaxed">
-                {question.text}
-              </p>
-            </div>
-          </div>
+          {/* Choices Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {question.choices.map((choice, index) => {
+              const isSelected = selectedChoice === choice.id
+              const letters = ['A', 'B', 'C', 'D']
 
-          {/* Choices grid - с большим отступом снизу */}
-          <div className="max-w-4xl mx-auto w-full pb-44">
-            {/* ☝️ ИЗМЕНЕНО: pb-44 = 176px отступ снизу для кнопки управления */}
-            <div className="grid grid-cols-1 gap-4">
-              {question.choices?.map((choice, idx) => (
+              return (
                 <button
                   key={choice.id}
                   onClick={() => handleChoiceClick(choice)}
-                  disabled={answered || timeLeft <= 0}
-                  className={`group relative overflow-hidden rounded-2xl transition-all duration-200
-                    ${selectedChoice === choice.id
-                      ? 'scale-95 shadow-2xl'
-                      : 'hover:scale-[1.02] shadow-lg hover:shadow-2xl'
+                  disabled={answered}
+                  className={`
+                    relative p-6 rounded-2xl text-left font-semibold text-lg
+                    transition-all duration-200 transform
+                    ${answered
+                      ? 'opacity-50 cursor-not-allowed'
+                      : 'hover:scale-105 hover:shadow-2xl cursor-pointer active:scale-95'
                     }
-                    disabled:opacity-50 disabled:cursor-not-allowed`}
-                  style={{
-                    animation: `slideUp 0.5s ease-out ${idx * 0.1}s both`
-                  }}
+                    ${isSelected
+                      ? 'bg-gradient-to-br from-green-400 to-emerald-500 text-white shadow-2xl scale-105'
+                      : 'bg-white text-gray-800 shadow-lg'
+                    }
+                  `}
                 >
-                  {/* Gradient background */}
-                  <div className={`absolute inset-0 bg-gradient-to-r ${choiceColors[idx]} opacity-90
-                                 group-hover:opacity-100 transition-opacity`} />
-
-                  {/* Selection overlay */}
-                  {selectedChoice === choice.id && (
-                    <div className="absolute inset-0 bg-white/30 backdrop-blur-sm" />
-                  )}
-
-                  {/* Content */}
-                  <div className="relative px-6 py-5 flex items-center gap-4">
-                    <span className="text-5xl flex-shrink-0">
-                      {choiceEmojis[idx]}
-                    </span>
-                    <span className="flex-1 text-left text-xl font-bold text-white">
-                      {choice.text}
-                    </span>
-                    {selectedChoice === choice.id && (
-                      <CheckCircle className="text-white flex-shrink-0" size={32} />
+                  <div className="flex items-start gap-3">
+                    <div className={`
+                      w-10 h-10 rounded-full flex items-center justify-center font-bold flex-shrink-0
+                      ${isSelected
+                        ? 'bg-white/30 text-white'
+                        : 'bg-purple-100 text-purple-600'
+                      }
+                    `}>
+                      {letters[index]}
+                    </div>
+                    <span className="flex-1 break-words">{choice.text}</span>
+                    {isSelected && (
+                      <CheckCircle className="w-6 h-6 flex-shrink-0" />
                     )}
                   </div>
                 </button>
-              ))}
-            </div>
+              )
+            })}
           </div>
-
-          {/* Answered status */}
-          {answered && (
-            <div className="max-w-4xl mx-auto w-full pb-6">
-              <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-4
-                            text-center shadow-xl animate-slideUp">
-                <div className="flex items-center justify-center gap-3">
-                  <CheckCircle className="text-green-400" size={28} />
-                  <div className="text-left">
-                    <p className="text-2xl font-bold text-white">Ответ принят!</p>
-                    <p className="text-sm text-white/60">Ждём результатов...</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
         </div>
       </div>
     </div>

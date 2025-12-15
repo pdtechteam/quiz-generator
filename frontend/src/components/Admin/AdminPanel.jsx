@@ -16,6 +16,7 @@ const AdminPanel = () => {
   });
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [generatePrompt, setGeneratePrompt] = useState('');
+  const [numQuestions, setNumQuestions] = useState(10);
   const [isGenerating, setIsGenerating] = useState(false);
   const [apiError, setApiError] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -106,7 +107,7 @@ const AdminPanel = () => {
         },
         body: JSON.stringify({
           prompt: generatePrompt,
-          num_questions: 5
+          num_questions: numQuestions
         })
       });
 
@@ -280,7 +281,7 @@ const AdminPanel = () => {
           <h1 className="text-4xl font-bold text-gray-800 mb-2">
             🎮 Quiz Generator Admin
           </h1>
-          <p className="text-gray-600">Создавай и управляй своими квизами</p>
+          <p className="text-gray-600">Создавай свои квизы и управляй ими</p>
         </div>
 
         {/* Error Message */}
@@ -301,22 +302,36 @@ const AdminPanel = () => {
             <h2 className="text-2xl font-bold text-gray-800">AI Генератор Квизов</h2>
           </div>
 
-          <div className="flex gap-4">
-            <input
-              type="text"
-              value={generatePrompt}
-              onChange={(e) => setGeneratePrompt(e.target.value)}
-              placeholder="Опишите тему квиза (например: 'История России 20 века')"
-              className="flex-1 px-6 py-4 border-2 border-gray-300 rounded-2xl text-lg focus:outline-none focus:border-purple-500 transition-colors"
-              disabled={isGenerating}
-            />
-            <button
-              onClick={handleGenerateQuiz}
-              disabled={isGenerating}
-              className="px-8 py-4 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-2xl font-semibold hover:shadow-xl transform hover:scale-105 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
-            >
-              {isGenerating ? '⏳ Генерация...' : '✨ Сгенерировать'}
-            </button>
+          <div className="space-y-4">
+            <div className="flex gap-4">
+              <input
+                type="text"
+                value={generatePrompt}
+                onChange={(e) => setGeneratePrompt(e.target.value)}
+                placeholder="Опишите тему квиза (например: 'История России 20 века')"
+                className="flex-1 px-6 py-4 border-2 border-gray-300 rounded-2xl text-lg focus:outline-none focus:border-purple-500 transition-colors"
+                disabled={isGenerating}
+              />
+              <div className="flex items-center gap-2">
+                <label className="text-gray-700 font-medium whitespace-nowrap">Вопросов:</label>
+                <input
+                  type="number"
+                  value={numQuestions}
+                  onChange={(e) => setNumQuestions(Math.max(3, Math.min(20, parseInt(e.target.value) || 10)))}
+                  min="3"
+                  max="20"
+                  className="w-20 px-4 py-4 border-2 border-gray-300 rounded-2xl text-lg text-center focus:outline-none focus:border-purple-500 transition-colors"
+                  disabled={isGenerating}
+                />
+              </div>
+              <button
+                onClick={handleGenerateQuiz}
+                disabled={isGenerating}
+                className="px-8 py-4 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-2xl font-semibold hover:shadow-xl transform hover:scale-105 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none whitespace-nowrap"
+              >
+                {isGenerating ? '⏳ Генерация...' : '✨ Сгенерировать'}
+              </button>
+            </div>
           </div>
 
           {isGenerating && (

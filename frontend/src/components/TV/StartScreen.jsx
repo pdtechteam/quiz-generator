@@ -61,19 +61,7 @@ function StartScreen({ onSelectAdmin, onSelectGame }) {
         {/* Menu */}
         {!selectedQuiz ? (
           <div className="space-y-6 max-w-3xl mx-auto">
-            {/* Admin button */}
-            <button
-              onClick={onSelectAdmin}
-              className="w-full px-12 py-8 bg-gradient-to-r from-yellow-500 to-orange-500
-                       hover:from-yellow-600 hover:to-orange-600 text-white rounded-3xl
-                       text-5xl font-black transition-all duration-200 shadow-2xl
-                       shadow-yellow-500/50 flex items-center justify-center gap-6 group"
-            >
-              <Settings size={56} className="group-hover:rotate-180 transition-transform duration-500" />
-              Режим Админа
-            </button>
-
-            {/* Start Game button */}
+            {/* ✅ ИЗМЕНЕНО: Start Game button теперь ПЕРВАЯ */}
             <button
               onClick={loadQuizzes}
               disabled={loading}
@@ -91,9 +79,21 @@ function StartScreen({ onSelectAdmin, onSelectGame }) {
               ) : (
                 <>
                   <Gamepad2 size={56} className="group-hover:scale-110 transition-transform" />
-                  Начать Игру
+                  Игра
                 </>
               )}
+            </button>
+
+            {/* ✅ ИЗМЕНЕНО: Admin button теперь ВТОРАЯ */}
+            <button
+              onClick={onSelectAdmin}
+              className="w-full px-12 py-8 bg-gradient-to-r from-yellow-500 to-orange-500
+                       hover:from-yellow-600 hover:to-orange-600 text-white rounded-3xl
+                       text-5xl font-black transition-all duration-200 shadow-2xl
+                       shadow-yellow-500/50 flex items-center justify-center gap-6 group"
+            >
+              <Settings size={56} className="group-hover:rotate-180 transition-transform duration-500" />
+              Администрирование
             </button>
 
             {/* Quiz selection */}
