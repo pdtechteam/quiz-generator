@@ -1,4 +1,6 @@
-import { Trophy, Medal, Award } from 'lucide-react'
+import { useEffect } from 'react'
+import { Trophy, Medal, Award, CheckCircle } from 'lucide-react'
+import { playSound } from '../../utils/sounds'
 
 function ResultScreen({ question, leaderboard }) {
   const podiumColors = [
@@ -8,6 +10,15 @@ function ResultScreen({ question, leaderboard }) {
   ]
 
   const podiumEmojis = ['🥇', '🥈', '🥉']
+
+  // ✅ ДОБАВЛЕНО: Звук при появлении результатов
+  useEffect(() => {
+    console.log('📊 TV Result: Showing results')
+    playSound('reveal')
+  }, [])
+
+  // ✅ ИСПРАВЛЕНО: Получаем правильный ответ из question
+  const correctChoice = question?.choices?.find(c => c.is_correct)
 
   return (
     <div className="w-screen h-screen bg-gradient-to-br from-slate-900 via-green-900 to-slate-900 p-12 text-white relative overflow-hidden">
@@ -27,18 +38,18 @@ function ResultScreen({ question, leaderboard }) {
         </div>
 
         <div className="flex-1 flex gap-8">
-          {/* Correct answer */}
-          {question && (
+          {/* ✅ ИСПРАВЛЕНО: Показываем правильный ответ */}
+          {question && correctChoice && (
             <div className="flex-1">
               <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-3xl p-10 h-full">
                 <div className="flex items-center gap-4 mb-6">
-                  <Award className="text-green-400" size={48} />
+                  <CheckCircle className="text-green-400" size={48} />
                   <h2 className="text-5xl font-bold">Правильный ответ:</h2>
                 </div>
 
-                <div className="bg-gradient-to-r from-green-500 to-emerald-500 rounded-3xl p-12 shadow-2xl">
+                <div className="bg-gradient-to-r from-green-500 to-emerald-500 rounded-3xl p-12 shadow-2xl animate-pulse">
                   <p className="text-6xl font-black text-center leading-tight">
-                    {question.choices?.find(c => c.is_correct)?.text || 'N/A'}
+                    ✓ {correctChoice.text}
                   </p>
                 </div>
 
