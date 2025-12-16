@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Trash2, Play, Download, Upload, Sparkles, X, Users } from 'lucide-react';
+import { Plus, Trash2, Play, Download, Upload, Sparkles, X, Users, ArrowLeft } from 'lucide-react';
 import QRCode from 'react-qr-code';
 import { API_CONFIG } from '../../utils/config';
 
-const AdminPanel = () => {
+const AdminPanel = ({ onBack }) => {
   const [quizzes, setQuizzes] = useState([]);
   const [sessions, setSessions] = useState([]);
   const [showQR, setShowQR] = useState(false);
