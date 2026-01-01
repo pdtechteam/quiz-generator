@@ -273,16 +273,32 @@ const AdminPanel = ({ onBack }) => {
     }
   };
 
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-600 via-pink-500 to-red-500 p-8">
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="bg-white rounded-3xl shadow-2xl p-8 mb-8">
-          <h1 className="text-4xl font-bold text-gray-800 mb-2">
-            🎮 Quiz Generator Admin
-          </h1>
-          <p className="text-gray-600">Создавай свои квизы и управляй ими</p>
-        </div>
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-purple-600 via-pink-500 to-red-500 p-4 sm:p-6 md:p-8">
+        <div className="max-w-7xl mx-auto">
+          {/* ✅ ДОБАВЛЕНО: Кнопка "Назад" */}
+          {onBack && (
+            <div className="mb-6">
+              <button
+                onClick={onBack}
+                className="inline-flex items-center gap-2 sm:gap-3 px-4 sm:px-6 py-2 sm:py-3
+                         bg-white/90 hover:bg-white backdrop-blur-xl border border-white/50
+                         rounded-xl sm:rounded-2xl transition-all text-gray-700 hover:text-purple-600
+                         font-semibold text-sm sm:text-base md:text-lg group shadow-lg"
+              >
+                <ArrowLeft size={20} className="group-hover:-translate-x-1 transition-transform" />
+                Назад в меню
+              </button>
+            </div>
+          )}
+
+          {/* Header */}
+          <div className="bg-white rounded-3xl shadow-2xl p-6 sm:p-8 mb-8">
+            <h1 className="text-3xl sm:text-4xl font-bold text-gray-800 mb-2">
+              🎮 Quiz Generator Admin
+            </h1>
+            <p className="text-sm sm:text-base text-gray-600">Создавай свои квизы и управляй ими</p>
+          </div>
 
         {/* Error Message */}
         {apiError && (

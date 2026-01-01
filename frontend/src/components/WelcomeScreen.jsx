@@ -2,7 +2,7 @@ import { Sparkles, Tv, Smartphone } from 'lucide-react'
 
 function WelcomeScreen({ onSelectMode }) {
   return (
-    <div className="min-h-screen w-full bg-gradient-to-br from-slate-900 via-purple-900 to-indigo-900
+    <div className="h-screen w-screen bg-gradient-to-br from-slate-900 via-purple-900 to-indigo-900
                   flex items-center justify-center p-4 sm:p-8 md:p-12 relative overflow-hidden">
       {/* Animated background */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none opacity-30">
