@@ -119,8 +119,14 @@ REST_FRAMEWORK = {
 # CORS НАСТРОЙКИ - КРИТИЧЕСКИ ВАЖНО ДЛЯ РАБОТЫ С ВНЕШНИМИ ДОМЕНАМИ
 # ============================================================================
 
-# Разрешаем запросы с любых источников (для dev окружения)
-CORS_ALLOW_ALL_ORIGINS = True
+# Используем конкретный список разрешенных доменов
+CORS_ALLOWED_ORIGINS = [
+    "http://quiz.dolgovst.keenetic.pro",
+    "https://quiz.dolgovst.keenetic.pro",
+    "http://192.168.2.100:5173",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+]
 
 # Разрешаем credentials (cookies, авторизация)
 CORS_ALLOW_CREDENTIALS = True
@@ -147,14 +153,6 @@ CORS_ALLOW_HEADERS = [
     'x-csrftoken',
     'x-requested-with',
 ]
-
-# Для продакшена лучше использовать конкретный список доменов:
-# CORS_ALLOW_ALL_ORIGINS = False
-# CORS_ALLOWED_ORIGINS = [
-#     "http://quiz.dolgovst.keenetic.pro",
-#     "http://192.168.2.100:5173",
-#     "http://localhost:5173",
-# ]
 
 # ============================================================================
 # OpenAI / LLM настройки
