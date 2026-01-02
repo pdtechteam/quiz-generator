@@ -20,12 +20,13 @@ const getConfig = () => {
       appUrl: 'http://192.168.2.100:5173'
     };
   } else {
-    // Внешний домен - используем тот же протокол, что и текущая страница
-    // Это решает проблему Mixed Content (HTTP/HTTPS)
+    // Внешний домен через nginx - все через один домен
+    // nginx сам маршрутизирует /api, /ws на нужные порты
+    const baseUrl = `${protocol}//${hostname}`;
     return {
-      apiBaseUrl: `${protocol}//quiz-back.dolgovst.keenetic.pro/api`,
-      wsBaseUrl: `${wsProtocol}//quiz-back.dolgovst.keenetic.pro/ws`,
-      appUrl: `${protocol}//quiz.dolgovst.keenetic.pro`
+      apiBaseUrl: `${baseUrl}/api`,
+      wsBaseUrl: `${wsProtocol}//${hostname}/ws`,
+      appUrl: baseUrl
     };
   }
 };
