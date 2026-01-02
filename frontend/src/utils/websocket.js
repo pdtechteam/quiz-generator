@@ -6,8 +6,9 @@ class GameWebSocket {
     this.ws = null
     this.listeners = {}
     this.reconnectAttempts = 0
-    this.maxReconnectAttempts = 5
+    this.maxReconnectAttempts = 10  // Увеличено с 5 до 10
     this.heartbeatInterval = null
+    this.isIntentionalClose = false  // Флаг для отслеживания намеренного закрытия
   }
 
   connect() {
@@ -22,6 +23,11 @@ class GameWebSocket {
       this.reconnectAttempts = 0
       this.startHeartbeat()
       this.emit('connected')
+
+      // Если это переподключение, уведомляем об этом
+      if (this.reconnectAttempts > 0) {
+        this.emit('reconnected')
+      }
     }
 
     this.ws.onmessage = (event) => {
@@ -39,11 +45,15 @@ class GameWebSocket {
       this.emit('error', error)
     }
 
-    this.ws.onclose = () => {
-      console.log('🔌 WebSocket closed')
+    this.ws.onclose = (event) => {
+      console.log('🔌 WebSocket closed', event.code, event.reason)
       this.stopHeartbeat()
-      this.emit('disconnected')
-      this.attemptReconnect()
+
+      // Не переподключаемся если закрытие было намеренным
+      if (!this.isIntentionalClose) {
+        this.emit('disconnected')
+        this.attemptReconnect()
+      }
     }
   }
 
@@ -51,7 +61,14 @@ class GameWebSocket {
     if (this.reconnectAttempts < this.maxReconnectAttempts) {
       this.reconnectAttempts++
       const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 10000)
-      console.log(`🔄 Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts})`)
+      console.log(`🔄 Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`)
+
+      // Уведомляем UI что мы переподключаемся
+      this.emit('reconnecting', {
+        attempt: this.reconnectAttempts,
+        maxAttempts: this.maxReconnectAttempts,
+        delay
+      })
 
       setTimeout(() => {
         this.connect()
@@ -64,7 +81,9 @@ class GameWebSocket {
 
   startHeartbeat() {
     this.heartbeatInterval = setInterval(() => {
-      this.send('ping', {})
+      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+        this.send('ping', {})
+      }
     }, 5000)
   }
 
@@ -79,7 +98,7 @@ class GameWebSocket {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify({ type, ...data }))
     } else {
-      console.error('Cannot send message: WebSocket not connected')
+      console.warn('⚠️ Cannot send message: WebSocket not connected (state:', this.ws?.readyState, ')')
     }
   }
 
@@ -103,6 +122,7 @@ class GameWebSocket {
   }
 
   disconnect() {
+    this.isIntentionalClose = true  // Помечаем как намеренное закрытие
     this.stopHeartbeat()
     if (this.ws) {
       this.ws.close()

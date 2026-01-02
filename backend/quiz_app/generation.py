@@ -124,7 +124,7 @@ def generate_questions(topic, count, difficulty='medium', player_count=1, retrie
         raise ValueError("OPENAI_API_KEY не найден в настройках")
 
     api_base = getattr(settings, 'OPENAI_API_BASE', None)
-    model = getattr(settings, 'OPENAI_MODEL', 'gpt-4-turbo')
+    model = getattr(settings, 'OPENAI_MODEL', 'openai/gpt-5.2-chat')
 
     # ✅ НОВЫЙ API: создаём клиент
     client = OpenAI(

@@ -6,7 +6,6 @@ import WaitingScreen from './WaitingScreen'
 import QuestionScreen from './QuestionScreen'
 import ResultScreen from './ResultScreen'
 import HostControls from './HostControls'
-import { ReconnectingNotice, DisconnectedNotice, ReconnectFailedNotice } from '../Common/ReconnectingNotice'
 
 function PlayerScreen({ onBackToWelcome }) {
   const [currentView, setCurrentView] = useState('join')
@@ -17,15 +16,6 @@ function PlayerScreen({ onBackToWelcome }) {
     question: null,
     isHost: false,
     result: null
-  })
-
-  // Состояние подключения
-  const [connectionState, setConnectionState] = useState({
-    isConnected: true,
-    isReconnecting: false,
-    reconnectAttempt: 0,
-    maxAttempts: 0,
-    reconnectFailed: false
   })
 
   useEffect(() => {
@@ -46,63 +36,12 @@ function PlayerScreen({ onBackToWelcome }) {
   const handleJoin = (code, name) => {
     const websocket = new GameWebSocket(code)
 
-    // Обработчики состояния подключения
+    // Сначала устанавливаем ВСЕ обработчики
     websocket.on('connected', () => {
       console.log('✅ Player: Connected, joining as:', name)
-      setConnectionState({
-        isConnected: true,
-        isReconnecting: false,
-        reconnectAttempt: 0,
-        maxAttempts: 0,
-        reconnectFailed: false
-      })
       websocket.join(name)
     })
 
-    websocket.on('disconnected', () => {
-      console.log('⚠️ Player: Disconnected')
-      setConnectionState(prev => ({
-        ...prev,
-        isConnected: false
-      }))
-    })
-
-    websocket.on('reconnecting', (data) => {
-      console.log('🔄 Player: Reconnecting...', data)
-      setConnectionState({
-        isConnected: false,
-        isReconnecting: true,
-        reconnectAttempt: data.attempt,
-        maxAttempts: data.maxAttempts,
-        reconnectFailed: false
-      })
-    })
-
-    websocket.on('reconnected', () => {
-      console.log('✅ Player: Reconnected successfully')
-      setConnectionState({
-        isConnected: true,
-        isReconnecting: false,
-        reconnectAttempt: 0,
-        maxAttempts: 0,
-        reconnectFailed: false
-      })
-      // Переподключились - повторно присоединяемся к игре
-      websocket.join(name)
-    })
-
-    websocket.on('reconnect_failed', () => {
-      console.error('❌ Player: Reconnect failed')
-      setConnectionState({
-        isConnected: false,
-        isReconnecting: false,
-        reconnectAttempt: 0,
-        maxAttempts: 0,
-        reconnectFailed: true
-      })
-    })
-
-    // Игровые обработчики
     websocket.on('player_joined', (data) => {
       console.log('✅ Player: Joined:', data)
       setPlayerData(data.player)
@@ -112,6 +51,7 @@ function PlayerScreen({ onBackToWelcome }) {
 
     websocket.on('session_state', (data) => {
       console.log('📊 Player: Session state:', data)
+      // Проверяем не стали ли мы ведущим
       if (playerData) {
         const myPlayer = data.players?.find(p => p.id === playerData.id)
         if (myPlayer?.is_host) {
@@ -123,6 +63,7 @@ function PlayerScreen({ onBackToWelcome }) {
 
     websocket.on('host_assigned', (data) => {
       console.log('👑 Player: Host assigned:', data)
+      // Сравниваем по имени, т.к. playerData может быть ещё не установлен
       if (data.player.name === name) {
         console.log('👑 Player: I became host!')
         setGameState(prev => ({ ...prev, isHost: true }))
@@ -157,29 +98,14 @@ function PlayerScreen({ onBackToWelcome }) {
       alert(`Ошибка: ${data.message}`)
     })
 
+    // Теперь подключаемся
     websocket.connect()
     setWs(websocket)
   }
 
   return (
     <div className="w-screen h-screen overflow-hidden">
-      {/* Уведомления о подключении */}
-      {connectionState.isReconnecting && (
-        <ReconnectingNotice
-          attempt={connectionState.reconnectAttempt}
-          maxAttempts={connectionState.maxAttempts}
-        />
-      )}
-
-      {!connectionState.isConnected && !connectionState.isReconnecting && !connectionState.reconnectFailed && (
-        <DisconnectedNotice />
-      )}
-
-      {connectionState.reconnectFailed && (
-        <ReconnectFailedNotice />
-      )}
-
-      {/* Back to Welcome button */}
+      {/* Back to Welcome button - shown on join screen */}
       {currentView === 'join' && onBackToWelcome && (
         <div className="absolute top-4 left-4 z-50">
           <button

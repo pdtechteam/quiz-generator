@@ -161,8 +161,8 @@ CORS_ALLOW_HEADERS = [
 try:
     from decouple import config, UndefinedValueError
     OPENAI_API_KEY = config('OPENAI_API_KEY')
-    OPENAI_MODEL = config('OPENAI_MODEL', default='gpt-4-turbo')
-    OPENAI_API_BASE = None
+    OPENAI_MODEL = config('OPENAI_MODEL', default='openai/gpt-5.2-chat')
+    OPENAI_API_BASE = "https://routerai.ru/api/v1"
 except:
     # Для локальной MLC LLM
     OPENAI_API_KEY = "not-needed"
