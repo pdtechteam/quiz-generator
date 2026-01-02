@@ -28,6 +28,18 @@ quiz-generator/
 ├── backend/          # Django backend
 ├── frontend/         # React frontend
 └── README.md
+
+Интернет/Локалка
+       ↓
+quiz.dolgovst.keenetic.pro:80
+       ↓
+Роутер Keenetic (порт 80 → 192.168.2.100:80)
+       ↓
+Nginx (192.168.2.100:80)
+    ├─→ / → Vite (5173) - фронтенд
+    ├─→ /api/ → Django (8000) - API
+    ├─→ /ws/ → Django (8000) - WebSocket
+    └─→ /admin/ → Django (8000) - Admin
 ```
 
 ## Технологии
