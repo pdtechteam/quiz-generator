@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { Clock, CheckCircle } from 'lucide-react'
 import { playSound } from '../../utils/sounds'
 
@@ -8,6 +8,21 @@ function QuestionScreen({ question, onAnswer }) {
   const [timeLeft, setTimeLeft] = useState(question?.time_limit || 20)
   const startTimeRef = useRef(Date.now())
   const hasAnsweredRef = useRef(false)
+
+  // Перемешиваем варианты ответов один раз при загрузке вопроса
+  const shuffledChoices = useMemo(() => {
+    if (!question?.choices) return []
+
+    // Создаём копию массива и перемешиваем
+    const choices = [...question.choices]
+    for (let i = choices.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [choices[i], choices[j]] = [choices[j], choices[i]]
+    }
+
+    console.log('🔀 Shuffled choices:', choices.map(c => c.text))
+    return choices
+  }, [question?.uuid]) // Перемешиваем только при смене вопроса
 
   useEffect(() => {
     if (!question) return
@@ -33,9 +48,9 @@ function QuestionScreen({ question, onAnswer }) {
             const timeTaken = (Date.now() - startTimeRef.current) / 1000
 
             // Отправляем первый вариант (будет неправильный)
-            if (question.choices && question.choices.length > 0) {
-              console.log('📤 Sending timeout answer:', question.choices[0].id)
-              onAnswer(question.choices[0].id, timeTaken)
+            if (shuffledChoices && shuffledChoices.length > 0) {
+              console.log('📤 Sending timeout answer:', shuffledChoices[0].id)
+              onAnswer(shuffledChoices[0].id, timeTaken)
             }
           }
 
@@ -49,7 +64,7 @@ function QuestionScreen({ question, onAnswer }) {
       console.log('🧹 Cleaning up timer')
       clearInterval(timer)
     }
-  }, [question, onAnswer])
+  }, [question, onAnswer, shuffledChoices])
 
   const handleChoiceClick = (choice) => {
     if (hasAnsweredRef.current || timeLeft <= 0) {
@@ -130,7 +145,7 @@ function QuestionScreen({ question, onAnswer }) {
 
           {/* Choices Grid */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {question.choices.map((choice, index) => {
+            {shuffledChoices.map((choice, index) => {
               const isSelected = selectedChoice === choice.id
               const letters = ['A', 'B', 'C', 'D']
 

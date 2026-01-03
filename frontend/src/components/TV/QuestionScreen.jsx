@@ -1,128 +1,86 @@
-import { useState, useEffect, useRef } from 'react'
-import { Users, CheckCircle, Clock } from 'lucide-react'
-import { playSound } from '../../utils/sounds'
+import { useState, useEffect, useMemo } from 'react'
+import { Clock, Users } from 'lucide-react'
 
-function QuestionScreen({ question, players, gameState }) {
+function QuestionScreen({ question, answeredCount = 0, totalPlayers = 0, correctCount = 0 }) {
   const [timeLeft, setTimeLeft] = useState(question?.time_limit || 20)
-  const [lastTickTime, setLastTickTime] = useState(0)
-  const timerStartedRef = useRef(false)
 
-  const choiceColors = [
-    'from-red-500 to-pink-500',
-    'from-blue-500 to-cyan-500',
-    'from-yellow-500 to-orange-500',
-    'from-green-500 to-emerald-500'
-  ]
+  // Перемешиваем варианты ответов один раз при загрузке вопроса
+  const shuffledChoices = useMemo(() => {
+    if (!question?.choices) return []
 
-  const choiceEmojis = ['🔴', '🔵', '🟡', '🟢']
+    // Создаём копию массива и перемешиваем
+    const choices = [...question.choices]
+    for (let i = choices.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [choices[i], choices[j]] = [choices[j], choices[i]]
+    }
 
-  // ✅ Таймер с звуками
+    console.log('🔀 TV: Shuffled choices:', choices.map(c => c.text))
+    return choices
+  }, [question?.uuid]) // Перемешиваем только при смене вопроса
+
   useEffect(() => {
     if (!question) return
 
-    console.log('🎯 TV Question: Starting timer')
     setTimeLeft(question.time_limit || 20)
-    setLastTickTime(0)
-    timerStartedRef.current = true
-
-    // ✅ ЗВУК: При появлении вопроса
-    playSound('reveal')
 
     const timer = setInterval(() => {
       setTimeLeft(prev => {
-        const newTime = Math.max(0, prev - 0.1)
-
-        // ✅ ЗВУК: Тик на последних 5 секундах
-        const currentSecond = Math.floor(newTime)
-        if (currentSecond !== lastTickTime && currentSecond <= 5 && currentSecond > 0) {
-          playSound('countdown')
-          setLastTickTime(currentSecond)
-        }
-
-        if (newTime <= 0) {
+        if (prev <= 0.1) {
           clearInterval(timer)
+          return 0
         }
-
-        return newTime
+        return prev - 0.1
       })
     }, 100)
 
-    return () => {
-      console.log('🧹 TV Question: Cleaning up timer')
-      clearInterval(timer)
-      timerStartedRef.current = false
-    }
+    return () => clearInterval(timer)
   }, [question])
-
-  const getTimerColor = () => {
-    const percentage = (timeLeft / (question?.time_limit || 20)) * 100
-    if (percentage <= 10) return 'from-red-500 to-pink-500'
-    if (percentage <= 25) return 'from-orange-500 to-red-500'
-    if (percentage <= 50) return 'from-yellow-500 to-orange-500'
-    return 'from-green-500 to-emerald-500'
-  }
 
   const getTimerWidth = () => {
     return Math.max(0, (timeLeft / (question?.time_limit || 20)) * 100)
   }
 
+  const choiceColors = [
+    'from-red-500 to-red-600',
+    'from-blue-500 to-blue-600',
+    'from-yellow-500 to-yellow-600',
+    'from-green-500 to-green-600'
+  ]
+
+  const choiceEmojis = ['🔴', '🔵', '🟡', '🟢']
+
   if (!question) {
     return (
-      <div className="w-screen h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center text-white">
-        <div className="text-5xl">Загрузка вопроса...</div>
+      <div className="w-screen h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-purple-900 flex items-center justify-center">
+        <div className="text-white text-4xl">Загрузка...</div>
       </div>
     )
   }
 
-  // ✅ ИСПРАВЛЕНО: Правильный подсчет ответивших
-  console.log('📊 gameState:', gameState) // Debug
-
-  // Парсим answeredCount если это строка
-  let answeredCount = 0
-  if (gameState?.answeredCount !== undefined) {
-    if (typeof gameState.answeredCount === 'string') {
-      // Если формат "X/Y" или "X/Y/Z", берем только первое число
-      const match = String(gameState.answeredCount).match(/^(\d+)/)
-      answeredCount = match ? parseInt(match[1]) : 0
-    } else {
-      answeredCount = Number(gameState.answeredCount) || 0
-    }
-  }
-
-  const totalPlayers = players?.length || 0
-  const correctCount = Number(gameState?.correctCount) || 0
-
-  console.log('📊 Parsed counts:', { answeredCount, totalPlayers, correctCount }) // Debug
-
   return (
-    <div className="w-screen h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 p-12 text-white relative overflow-hidden">
-      {/* Animated background */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none opacity-20">
-        <div className="absolute top-1/3 right-1/3 w-[600px] h-[600px] bg-purple-500 rounded-full blur-3xl animate-pulse" />
-        <div className="absolute bottom-1/3 left-1/3 w-[600px] h-[600px] bg-pink-500 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1.5s' }} />
-      </div>
+    <div className="w-screen h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-purple-900 overflow-hidden">
+      <style>{`
+        @keyframes zoomIn {
+          from {
+            opacity: 0;
+            transform: scale(0.8);
+          }
+          to {
+            opacity: 1;
+            transform: scale(1);
+          }
+        }
+      `}</style>
 
-      {/* ✅ Timer Bar */}
-      <div className="absolute top-0 left-0 right-0 w-full h-4 bg-black/20 z-20">
-        <div
-          className={`h-full bg-gradient-to-r ${getTimerColor()} transition-all duration-100 ease-linear`}
-          style={{ width: `${getTimerWidth()}%` }}
-        />
-      </div>
-
-      <div className="relative z-10 flex flex-col h-full">
-        {/* Progress indicator */}
-        <div className="flex items-center justify-between mb-8 mt-4">
+      <div className="h-full flex flex-col p-12">
+        {/* Header with timer and stats */}
+        <div className="flex justify-between items-center mb-12 gap-8">
+          {/* ⏱️ Таймер */}
           <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl px-8 py-4">
-            <p className="text-4xl font-bold text-purple-300">
-              Вопрос {question.order || 1}
-            </p>
-          </div>
-
-          {/* ✅ Таймер */}
-          <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl px-8 py-4">
-            <div className="flex items-center gap-3">
-              <Clock className={`${timeLeft <= 5 ? 'text-red-400 animate-pulse' : 'text-cyan-400'}`} size={32} />
+            <div className="flex items-center gap-4">
+              <Clock className={`${timeLeft <= 5 ?
+                'text-red-400 animate-pulse' : 'text-cyan-400'}`} size={32} />
               <span className={`text-4xl font-bold font-mono ${
                 timeLeft <= 5 ? 'text-red-400 animate-pulse' : 'text-white'
               }`}>
@@ -159,7 +117,7 @@ function QuestionScreen({ question, players, gameState }) {
 
           {/* Choices grid */}
           <div className="grid grid-cols-2 gap-8">
-            {question.choices?.map((choice, idx) => (
+            {shuffledChoices.map((choice, idx) => (
               <div
                 key={choice.id}
                 className="group relative overflow-hidden rounded-3xl shadow-2xl transform hover:scale-[1.02] transition-all"
@@ -185,6 +143,16 @@ function QuestionScreen({ question, players, gameState }) {
                               transform -translate-x-full group-hover:translate-x-full transition-transform duration-1000" />
               </div>
             ))}
+          </div>
+        </div>
+
+        {/* Timer Bar at bottom */}
+        <div className="mt-8">
+          <div className="w-full h-4 bg-white/10 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-gradient-to-r from-cyan-400 to-blue-500 transition-all duration-100 ease-linear"
+              style={{ width: `${getTimerWidth()}%` }}
+            />
           </div>
         </div>
       </div>
