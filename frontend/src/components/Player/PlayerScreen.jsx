@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { ArrowLeft } from 'lucide-react'
 import GameWebSocket from '../../utils/websocket'
 import JoinScreen from './JoinScreen'
@@ -28,6 +28,9 @@ function PlayerScreen({ onBackToWelcome }) {
     reconnectFailed: false
   })
 
+  // Сохраняем имя игрока чтобы отличать свои события от чужих
+  const myPlayerNameRef = useRef(null)
+
   useEffect(() => {
     // Автозаполнение кода из URL
     const params = new URLSearchParams(window.location.search)
@@ -44,6 +47,9 @@ function PlayerScreen({ onBackToWelcome }) {
   }, [ws])
 
   const handleJoin = (code, name) => {
+    // Сохраняем имя игрока
+    myPlayerNameRef.current = name
+
     const websocket = new GameWebSocket(code)
 
     // Обработчики состояния подключения
@@ -104,10 +110,18 @@ function PlayerScreen({ onBackToWelcome }) {
 
     // Игровые обработчики
     websocket.on('player_joined', (data) => {
-      console.log('✅ Player: Joined:', data)
-      setPlayerData(data.player)
-      setSessionCode(code)
-      setCurrentView('waiting')
+      console.log('✅ Player: player_joined event:', data)
+
+      // КРИТИЧНО: Проверяем что это МЫ присоединились, а не кто-то другой
+      if (data.player.name === myPlayerNameRef.current) {
+        console.log('✅ Player: This is ME joining!')
+        setPlayerData(data.player)
+        setSessionCode(code)
+        setCurrentView('waiting')
+      } else {
+        console.log('👤 Player: Someone else joined:', data.player.name)
+        // Это другой игрок присоединился - игнорируем
+      }
     })
 
     websocket.on('session_state', (data) => {
@@ -123,7 +137,8 @@ function PlayerScreen({ onBackToWelcome }) {
 
     websocket.on('host_assigned', (data) => {
       console.log('👑 Player: Host assigned:', data)
-      if (data.player.name === name) {
+      // Проверяем что это МЫ стали ведущим
+      if (data.player.name === myPlayerNameRef.current) {
         console.log('👑 Player: I became host!')
         setGameState(prev => ({ ...prev, isHost: true }))
         setPlayerData(prev => ({ ...prev, is_host: true }))

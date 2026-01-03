@@ -102,7 +102,7 @@ function TVScreen({ onBackToWelcome }) {
       console.log('🏁 TV: Game over:', data)
       setGameState(prev => ({
         ...prev,
-        leaderboard: data.final_leaderboard,
+        leaderboard: data.leaderboard,  // ИСПРАВЛЕНО: было final_leaderboard
         awards: data.awards
       }))
       setCurrentView('final')
@@ -115,6 +115,26 @@ function TVScreen({ onBackToWelcome }) {
     // Теперь подключаемся
     websocket.connect()
     setWs(websocket)
+  }
+
+  // ✅ НОВАЯ ФУНКЦИЯ - Возврат в меню из финального экрана
+  const handleBackToMenu = () => {
+    console.log('🔙 Back to menu from final screen')
+    // Отключаем WebSocket
+    if (ws) {
+      ws.disconnect()
+    }
+    // Сбрасываем состояние
+    setWs(null)
+    setSessionCode(null)
+    setGameState({
+      players: [],
+      currentQuestion: null,
+      leaderboard: [],
+      state: 'waiting'
+    })
+    // Возвращаемся в меню
+    setCurrentView('menu')
   }
 
   // Dynamic overflow based on view
@@ -211,8 +231,9 @@ function TVScreen({ onBackToWelcome }) {
       {currentView === 'question' && (
         <QuestionScreen
           question={gameState.currentQuestion}
-          players={gameState.players}
-          gameState={gameState}
+          answeredCount={gameState.answeredCount}
+          totalPlayers={gameState.players.length}
+          correctCount={gameState.correctCount}
         />
       )}
 
@@ -226,9 +247,10 @@ function TVScreen({ onBackToWelcome }) {
 
       {/* Final Screen */}
       {currentView === 'final' && (
-        <FinalScreen 
+        <FinalScreen
           leaderboard={gameState.leaderboard}
           awards={gameState.awards}
+          onBackToMenu={handleBackToMenu}
         />
       )}
     </div>
