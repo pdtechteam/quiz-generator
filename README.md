@@ -13,13 +13,12 @@ conda activate quiz-generator
 ### 2. Запуск backend
 
 ```bash
-cd backend
-python manage.py runserver
+
 ```
 
 ### 3. Django Admin
 
-Открой http://127.0.0.1:8000/admin/
+
 
 ## Структура проекта
 
@@ -67,10 +66,7 @@ python manage.py createsuperuser
 ### Запуск Redis (для WebSocket)
 
 ```bash
-# Через Docker
-docker run -p 6379:6379 redis:alpine
 
-# Или установить локально
 ```
 
 ## TODO
