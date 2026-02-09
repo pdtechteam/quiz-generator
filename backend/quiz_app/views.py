@@ -8,14 +8,17 @@ from rest_framework.response import Response
 from rest_framework.permissions import AllowAny
 from django.shortcuts import get_object_or_404
 from django.db.models import Q
+from django.db import transaction
 
-from .models import Quiz, Question, Choice, GameSession, Player, Answer
+from .models import Quiz, Question, Choice, GameSession, Player, Answer, QuizDraft, QuestionConfig
 from .serializers import (
     QuizListSerializer, QuizDetailSerializer, QuizCreateSerializer,
     QuestionSerializer, QuestionForPlayerSerializer,
     GameSessionSerializer, SessionCreateSerializer,
     PlayerSerializer, AnswerSerializer, AnswerSubmitSerializer,
-    LeaderboardSerializer
+    LeaderboardSerializer,
+    QuizDraftSerializer, QuizDraftCreateSerializer, QuestionConfigCreateSerializer,
+    QuizGenerateRequestSerializer, QuestionConfigSerializer
 )
 
 
@@ -168,16 +171,29 @@ class GameSessionViewSet(viewsets.ModelViewSet):
 
     def create(self, request, *args, **kwargs):
         """Создание игровой сессии"""
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        session = serializer.save()
+        try:
+            # Поддержка quiz_id если фронтенд его шлет, а сериализатор ждет quiz
+            data = request.data.copy()
+            if 'quiz_id' in data and 'quiz' not in data:
+                data['quiz'] = data['quiz_id']
 
-        # Возвращаем полную информацию о сессии
-        detail_serializer = GameSessionSerializer(session)
-        return Response(
-            detail_serializer.data,
-            status=status.HTTP_201_CREATED
-        )
+            serializer = self.get_serializer(data=data)
+            serializer.is_valid(raise_exception=True)
+            session = serializer.save()
+
+            # Возвращаем код сессии для подключения игроков
+            return Response(
+                {'code': session.code, 'id': session.id},
+                status=status.HTTP_201_CREATED
+            )
+        except Exception as e:
+            import traceback
+            print(f"Error creating session: {e}")
+            print(traceback.format_exc())
+            return Response(
+                {'error': f'Ошибка создания сессии: {str(e)}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
     @action(detail=True, methods=['get'])
     def state(self, request, code=None):
@@ -456,4 +472,157 @@ class AnswerViewSet(viewsets.ModelViewSet):
         ).select_related('question', 'choice')
 
         serializer = self.get_serializer(answers, many=True)
+        return Response(serializer.data)
+
+
+# ============================================================================
+# НОВЫЕ VIEWSET ДЛЯ ГИБКОЙ ГЕНЕРАЦИИ КВИЗОВ
+# ============================================================================
+
+class QuizDraftViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet для управления черновиками квизов
+    
+    Endpoints:
+    - GET /api/quiz-drafts/ - список всех черновиков
+    - POST /api/quiz-drafts/ - создать новый черновик
+    - GET /api/quiz-drafts/{id}/ - детали черновика
+    - PUT /api/quiz-drafts/{id}/ - обновить черновик
+    - DELETE /api/quiz-drafts/{id}/ - удалить черновик
+    - POST /api/quiz-drafts/{id}/generate/ - сгенерировать квиз
+    - POST /api/quiz-drafts/{id}/reset-all/ - сбросить все настройки
+    """
+    queryset = QuizDraft.objects.all().order_by('-created_at')
+    permission_classes = [AllowAny]
+    
+    def get_serializer_class(self):
+        if self.action == 'create':
+            return QuizDraftCreateSerializer
+        return QuizDraftSerializer
+    
+    def create(self, request, *args, **kwargs):
+        """Создание черновика с возвратом полных данных (включая ID)"""
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        draft = serializer.save()
+        
+        return Response(QuizDraftSerializer(draft).data, status=status.HTTP_201_CREATED)
+    
+    @action(detail=True, methods=['post'])
+    def generate(self, request, pk=None):
+        """
+        POST /api/quiz-drafts/{id}/generate/
+        Сгенерировать квиз из черновика
+        """
+        draft = self.get_object()
+        
+        try:
+            from .generation import generate_quiz_from_draft
+            
+            quiz = generate_quiz_from_draft(draft)
+            
+            draft.is_generated = True
+            draft.generated_quiz = quiz
+            draft.save()
+            
+            serializer = QuizDetailSerializer(quiz)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+            
+        except Exception as e:
+            return Response(
+                {'error': f'Ошибка генерации: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    @action(detail=True, methods=['post'])
+    def reset_all(self, request, pk=None):
+        """
+        POST /api/quiz-drafts/{id}/reset-all/
+        Сбросить все индивидуальные настройки вопросов
+        """
+        draft = self.get_object()
+        
+        reset_count = draft.question_configs.update(
+            use_custom_settings=False,
+            difficulty='',
+            time_limit=None,
+            question_type='',
+            topic_refinement=''
+        )
+        
+        return Response({
+            'message': f'Сброшено {reset_count} настроек',
+            'reset_count': reset_count
+        })
+
+
+class QuestionConfigViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet для управления конфигурациями вопросов
+    
+    Endpoints:
+    - GET /api/question-configs/ - список всех конфигураций
+    - POST /api/question-configs/ - создать конфигурацию
+    - GET /api/question-configs/{id}/ - детали конфигурации
+    - PUT /api/question-configs/{id}/ - обновить конфигурацию
+    - DELETE /api/question-configs/{id}/ - удалить конфигурацию
+    - POST /api/question-configs/{id}/reset/ - сбросить к умолчанию
+    """
+    queryset = QuestionConfig.objects.all()
+    permission_classes = [AllowAny]
+    
+    def get_serializer_class(self):
+        if self.action == 'create':
+            return QuestionConfigCreateSerializer
+        return QuestionConfigSerializer
+    
+    def create(self, request, *args, **kwargs):
+        """Создание конфигурации (поддержка одиночного и массового создания)"""
+        try:
+            is_many = isinstance(request.data, list)
+            
+            if is_many:
+                serializer = self.get_serializer(data=request.data, many=True)
+                serializer.is_valid(raise_exception=True)
+                # Ручное создание объектов для обхода ошибки "create() must be implemented"
+                instances = []
+                for i, item in enumerate(serializer.validated_data):
+                    # Если сериализатор не вернул quiz_draft (например, если он read_only),
+                    # берем ID из входных данных
+                    if 'quiz_draft' not in item and 'quiz_draft' in request.data[i]:
+                        item['quiz_draft_id'] = request.data[i]['quiz_draft']
+                    instances.append(QuestionConfig.objects.create(**item))
+            else:
+                serializer = self.get_serializer(data=request.data)
+                serializer.is_valid(raise_exception=True)
+                # Передаем quiz_draft_id явно, если его нет в validated_data
+                save_kwargs = {}
+                if 'quiz_draft' not in serializer.validated_data and 'quiz_draft' in request.data:
+                    save_kwargs['quiz_draft_id'] = request.data['quiz_draft']
+                instances = serializer.save(**save_kwargs)
+            
+            response_serializer = QuestionConfigSerializer(instances, many=is_many)
+            return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+        except Exception as e:
+            import traceback
+            print(f"Error creating QuestionConfig: {e}")
+            print(traceback.format_exc())
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+    
+    @action(detail=True, methods=['post'])
+    def reset(self, request, pk=None):
+        """
+        POST /api/question-configs/{id}/reset/
+        Сбросить настройки вопроса к умолчанию
+        """
+        config = self.get_object()
+        
+        config.use_custom_settings = False
+        config.difficulty = ''
+        config.time_limit = None
+        config.question_type = ''
+        config.topic_refinement = ''
+        config.save()
+        
+        serializer = self.get_serializer(config)
         return Response(serializer.data)

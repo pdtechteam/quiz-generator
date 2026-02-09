@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Plus, Trash2, Play, Download, Upload, Sparkles, X, Users, ArrowLeft } from 'lucide-react';
 import QRCode from 'react-qr-code';
 import { API_CONFIG } from '../../utils/config';
+import QuizGeneratorScreen from './QuizGeneratorScreen';
 
 const AdminPanel = ({ onBack }) => {
   const [quizzes, setQuizzes] = useState([]);
@@ -15,11 +16,13 @@ const AdminPanel = ({ onBack }) => {
     questions: []
   });
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [showGenerator, setShowGenerator] = useState(false);
   const [generatePrompt, setGeneratePrompt] = useState('');
   const [numQuestions, setNumQuestions] = useState(10);
   const [isGenerating, setIsGenerating] = useState(false);
   const [apiError, setApiError] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [successMessage, setSuccessMessage] = useState(null);
 
   useEffect(() => {
     loadQuizzes();
@@ -98,6 +101,9 @@ const AdminPanel = ({ onBack }) => {
     }
 
     setIsGenerating(true);
+    setApiError(null);
+    setSuccessMessage(null);
+
     try {
       console.log('🎨 Генерация квиза:', generatePrompt);
       const response = await fetch(`${API_CONFIG.API_BASE_URL}/quizzes/generate/`, {
@@ -121,10 +127,11 @@ const AdminPanel = ({ onBack }) => {
 
       setGeneratePrompt('');
       await loadQuizzes();
-      alert('Квиз успешно сгенерирован!');
+      setSuccessMessage('Квиз успешно сгенерирован!');
+      setTimeout(() => setSuccessMessage(null), 5000);
     } catch (error) {
       console.error('❌ Ошибка генерации:', error);
-      alert(`Ошибка генерации квиза: ${error.message}`);
+      setApiError(`Ошибка генерации квиза: ${error.message}`);
     } finally {
       setIsGenerating(false);
     }
@@ -157,8 +164,7 @@ const AdminPanel = ({ onBack }) => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          quiz_id: quizId,
-          host_name: 'Admin'
+          quiz_id: quizId
         })
       });
 
@@ -167,9 +173,16 @@ const AdminPanel = ({ onBack }) => {
       }
 
       const data = await response.json();
-      setCurrentSession(data);
-      setShowQR(true);
-      await loadSessions();
+      // API возвращает { code: "1234" }
+      if (data.code) {
+        setCurrentSession({ code: data.code });
+        setShowQR(true);
+        await loadSessions();
+      } else {
+        setCurrentSession(data);
+        setShowQR(true);
+        await loadSessions();
+      }
     } catch (error) {
       console.error('❌ Ошибка старта игры:', error);
       alert(`Ошибка создания игры: ${error.message}`);
@@ -254,7 +267,9 @@ const AdminPanel = ({ onBack }) => {
 
   const getJoinUrl = () => {
     if (!currentSession) return '';
-    return `${API_CONFIG.APP_URL}/?session=${currentSession.code}`;
+    // currentSession может быть объектом с code или полной сессией
+    const code = typeof currentSession === 'string' ? currentSession : currentSession.code;
+    return `${API_CONFIG.APP_URL}/?session=${code}`;
   };
 
   // ✅ НОВАЯ ФУНКЦИЯ: Получение статуса сессии
@@ -311,11 +326,27 @@ const AdminPanel = ({ onBack }) => {
           </div>
         )}
 
+        {/* Success Message */}
+        {successMessage && (
+          <div className="bg-green-100 border border-green-400 text-green-700 px-6 py-4 rounded-2xl mb-6">
+            ✅ {successMessage}
+          </div>
+        )}
+
         {/* AI Generator Section */}
         <div className="bg-white rounded-3xl shadow-2xl p-8 mb-8">
-          <div className="flex items-center gap-3 mb-6">
-            <Sparkles className="w-8 h-8 text-purple-600" />
-            <h2 className="text-2xl font-bold text-gray-800">AI Генератор Квизов</h2>
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-3">
+              <Sparkles className="w-8 h-8 text-purple-600" />
+              <h2 className="text-2xl font-bold text-gray-800">AI Генератор Квизов</h2>
+            </div>
+            <button
+              onClick={() => setShowGenerator(true)}
+              className="px-6 py-2 bg-purple-100 text-purple-700 rounded-xl font-semibold hover:bg-purple-200 transition-colors flex items-center gap-2"
+            >
+              <Sparkles size={20} />
+              Расширенный
+            </button>
           </div>
 
           <div className="space-y-4">
@@ -333,7 +364,11 @@ const AdminPanel = ({ onBack }) => {
                 <input
                   type="number"
                   value={numQuestions}
-                  onChange={(e) => setNumQuestions(Math.max(3, Math.min(20, parseInt(e.target.value) || 10)))}
+                  onChange={(e) => setNumQuestions(e.target.value)}
+                  onBlur={(e) => {
+                    let val = parseInt(e.target.value) || 10;
+                    setNumQuestions(Math.max(3, Math.min(20, val)));
+                  }}
                   min="3"
                   max="20"
                   className="w-20 px-4 py-4 border-2 border-gray-300 rounded-2xl text-lg text-center focus:outline-none focus:border-purple-500 transition-colors"
@@ -527,6 +562,34 @@ const AdminPanel = ({ onBack }) => {
           </div>
         )}
       </div>
+
+      {/* Quiz Generator Screen */}
+      {showGenerator && (
+        <QuizGeneratorScreen
+          onBack={() => setShowGenerator(false)}
+          onQuizCreated={(code) => {
+            setShowGenerator(false);
+            // Code created, show QR
+            if (code) {
+              // Find the session with this code from active sessions
+              const session = sessions.find(s => s.code === code);
+              if (session) {
+                setCurrentSession(session);
+                setShowQR(true);
+              } else {
+                // Session not found, reload sessions
+                loadSessions().then(() => {
+                  const newSession = sessions.find(s => s.code === code);
+                  if (newSession) {
+                    setCurrentSession(newSession);
+                    setShowQR(true);
+                  }
+                });
+              }
+            }
+          }}
+        />
+      )}
     </div>
   );
 };

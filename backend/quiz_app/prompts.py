@@ -1,59 +1,30 @@
-# ============================================================================
-# ФАЙЛ 2: backend/quiz_app/prompts.py (СОЗДАЙ НОВЫЙ ФАЙЛ)
-# ============================================================================
-
 import random
 
-# ============================================================================
-# ШАБЛОНЫ ПРОМПТОВ ДЛЯ ГЕНЕРАЦИИ ВОПРОСОВ
-# ============================================================================
-
-# Карта доступных изображений по темам
-THEME_IMAGES = {
-    'films': ['soviet_cinema', 'hollywood', 'french_cinema'],
-    'animals': ['cat', 'tiger', 'elephant', 'panda', 'wolf'],
-    'geography': ['mountains', 'rivers', 'cities', 'deserts'],
-    'music': ['rock', 'classical', 'jazz', 'pop'],
-    'history': ['ancient', 'medieval', 'modern'],
-}
-
-# Описания сложностей для LLM
-DIFFICULTY_DESCRIPTIONS = {
-    'easy': 'Очень лёгкий вопрос, известный широкой публике факт',
-    'medium': 'Средний вопрос, требует базовых знаний по теме',
-    'hard': 'Сложный вопрос для знатоков, малоизвестные детали',
-    'very_hard': 'Очень сложный вопрос, редкие факты, для экспертов',
-    'fun': 'Лёгкий шуточный вопрос для разрядки атмосферы',
-}
-
+from .prompts_data import (
+    TOPIC_KEYWORDS,
+    THEME_IMAGES,
+    DIFFICULTY_DESCRIPTIONS,
+    SUCCESS_REPLIES,
+    FAIL_REPLIES,
+    RARE_SUCCESS,
+    RARE_FAILS,
+    TOPIC_SPECIFIC_PHRASES
+)
 
 def detect_topic_category(topic_str):
     """
     Определяет категорию темы по ключевым словам
-
-    Args:
-        topic_str: строка с темой (например, "Советские фильмы")
-
-    Returns:
-        str: категория ('films', 'animals', и т.д.) или 'default'
     """
     topic_lower = topic_str.lower()
 
-    if any(word in topic_lower for word in ['фильм', 'кино', 'актёр', 'режиссёр', 'сериал']):
-        return 'films'
-    elif any(word in topic_lower for word in ['животн', 'зоо', 'фауна', 'птиц', 'рыб']):
-        return 'animals'
-    elif any(word in topic_lower for word in ['геогра', 'стран', 'город', 'столиц', 'река', 'гор']):
-        return 'geography'
-    elif any(word in topic_lower for word in ['музык', 'песн', 'группа', 'исполнитель', 'альбом']):
-        return 'music'
-    elif any(word in topic_lower for word in ['истор', 'войн', 'век', 'эпох', 'правител']):
-        return 'history'
+    for category, keywords in TOPIC_KEYWORDS.items():
+        if any(word in topic_lower for word in keywords):
+            return category
 
     return 'default'
 
 
-def build_prompt(topic, count, difficulty_curve, player_count=1):
+def build_prompt(topic, count, difficulty_curve, player_count=1, question_configs=None):
     """
     Строит промпт для LLM с учётом темы, сложности и количества игроков
 
@@ -62,6 +33,7 @@ def build_prompt(topic, count, difficulty_curve, player_count=1):
         count: количество вопросов
         difficulty_curve: список сложностей для каждого вопроса
         player_count: количество игроков (для контекста)
+        question_configs: список настроек для каждого вопроса [{'difficulty':..., 'type':..., 'refinement':...}]
 
     Returns:
         str: готовый промпт для OpenAI
@@ -88,11 +60,31 @@ def build_prompt(topic, count, difficulty_curve, player_count=1):
     else:
         image_instruction = "Изображения для этой темы недоступны. Оставь поле image_url пустым для всех вопросов."
 
-    # Строим список требований по сложности
-    difficulty_requirements = "\n".join([
-        f"Вопрос {i + 1}: {DIFFICULTY_DESCRIPTIONS[diff]}"
-        for i, diff in enumerate(difficulty_curve[:count])
-    ])
+    # Строим список требований для каждого вопроса
+    requirements_list = []
+    for i in range(count):
+        num = i + 1
+        if question_configs and i < len(question_configs):
+            # Индивидуальные настройки
+            config = question_configs[i]
+            diff = config.get('difficulty', 'medium')
+            q_type = config.get('type', 'text')
+            refinement = config.get('refinement', '')
+            
+            desc = DIFFICULTY_DESCRIPTIONS.get(diff, DIFFICULTY_DESCRIPTIONS['medium'])
+            req = f"Вопрос {num}: Сложность {diff} ({desc})."
+            
+            if q_type != 'text':
+                req += f" ТИП: {q_type}."
+            if refinement:
+                req += f" КОНКРЕТНАЯ ТЕМА: {refinement}."
+            requirements_list.append(req)
+        else:
+            # Стандартная кривая
+            diff = difficulty_curve[i] if i < len(difficulty_curve) else 'medium'
+            requirements_list.append(f"Вопрос {num}: {DIFFICULTY_DESCRIPTIONS.get(diff, diff)}")
+
+    difficulty_requirements = "\n".join(requirements_list)
 
     # Контекст по количеству игроков
     player_context = ""
@@ -109,7 +101,7 @@ def build_prompt(topic, count, difficulty_curve, player_count=1):
 
 {image_instruction}
 
-ТРЕБОВАНИЯ ПО СЛОЖНОСТИ:
+ТРЕБОВАНИЯ К ВОПРОСАМ (следуй им строго для каждого номера):
 {difficulty_requirements}
 
 ФОРМАТ ВЫВОДА — строго JSON:
@@ -137,6 +129,7 @@ def build_prompt(topic, count, difficulty_curve, player_count=1):
 8. difficulty: одно из значений "easy", "medium", "hard", "very_hard", "fun"
 9. Не используй вопросы с точными датами (только если тема не "История")
 10. Для сложности "fun" создавай лёгкие шуточные вопросы для разрядки
+11. Если указан ТИП или КОНКРЕТНАЯ ТЕМА, обязательно учти это.
 
 ПРИМЕРЫ ХОРОШИХ ВОПРОСОВ:
 
@@ -187,134 +180,61 @@ def build_prompt(topic, count, difficulty_curve, player_count=1):
     return prompt
 
 
-# ============================================================================
-# МОТИВИРУЮЩИЕ ФРАЗЫ ДЛЯ ОТВЕТОВ
-# ============================================================================
+def get_type_instructions(question_type):
+    """Возвращает инструкции для конкретного типа вопроса"""
+    instructions = {
+        'text': """
+Создай текстовый вопрос с 4 вариантами ответа.
+Все варианты должны быть правдоподобными.
+""",
+        'image': """
+Создай вопрос, который требует визуального восприятия.
+Например: "Кто изображён на этой фотографии?" или "Что происходит на кадре?"
+Укажи подходящий image_url из доступных (выбери из списка выше или оставь пустым).
+""",
+        'audio': """
+Создай вопрос про музыку, звуки или цитаты.
+Например: "Какая группа исполняет эту песню?" или "Из какого фильма эта фраза?"
+""",
+        'video': """
+Создай вопрос про видео, фильм или клип.
+Например: "Из какого фильма этот кадр?" или "Что произойдет дальше?"
+"""
+    }
+    return instructions.get(question_type, instructions['text'])
 
-# Обычные фразы по сложности
-SUCCESS_REPLIES = {
-    'easy': [
-        "Легко! ✨",
-        "Разминка прошла успешно!",
-        "Отлично, продолжаем! 👍",
-    ],
-    'medium': [
-        "Отлично! ⚡",
-        "Хорошо знаешь тему!",
-        "Правильно, так держать! 🎯",
-    ],
-    'hard': [
-        "Впечатляет! 🎯",
-        "Отличные знания!",
-        "Ты знаток! 👏",
-    ],
-    'very_hard': [
-        "Невероятно! Ты эксперт! 🏆",
-        "Как ты это знал?! 🤯",
-        "Феноменально! 🌟",
-    ],
-    'fun': [
-        "Весело! 😄",
-        "Правильно и смешно!",
-        "Ха-ха, молодец! 🎉",
-    ]
-}
 
-FAIL_REPLIES = {
-    'easy': [
-        "Ой, это же лёгкий! 😅",
-        "Бывает, не переживай!",
-        "Следующий вопрос будет лучше!",
-    ],
-    'medium': [
-        "Хорошая попытка!",
-        "Почти угадал! 🎯",
-        "Ничего, продолжаем!",
-    ],
-    'hard': [
-        "Сложный был, ничего! 💪",
-        "Не всем дано это знать!",
-        "Зато теперь знаешь! 📚",
-    ],
-    'very_hard': [
-        "Это был очень сложный вопрос...",
-        "Мало кто знает такое!",
-        "Теперь точно запомнишь! 🧠",
-    ],
-    'fun': [
-        "Не угадал шутку! 😄",
-        "Бывает! Следующий раз повезёт!",
-        "Ничего, посмеялись! 😊",
-    ]
-}
+def build_prompt_for_single_question(topic, difficulty, question_type='text', topic_refinement=''):
+    """
+    Генерирует промпт для ОДНОГО вопроса с детальными настройками
+    """
+    final_topic = topic
+    if topic_refinement:
+        final_topic = f"{topic} (конкретно: {topic_refinement})"
 
-# Редкие фразы (1% вероятность)
-RARE_SUCCESS = [
-    "ВАУ! Даже я не был уверен в ответе! 🤯",
-    "Ты случайно не читал мысли составителя? 🧙",
-    "Это... это было идеально! 👏",
-    "Legendary! Такие ответы в учебники попадают! 📖",
-]
+    type_instructions = get_type_instructions(question_type)
+    difficulty_desc = DIFFICULTY_DESCRIPTIONS.get(difficulty, DIFFICULTY_DESCRIPTIONS['medium'])
 
-RARE_FAILS = [
-    "Это был тест, и ты его... эээ... почти прошёл 🤣",
-    "Где-то в параллельной вселенной ты ответил правильно",
-    "Если что — я никому не скажу 😏",
-    "Говорят, с третьей попытки получается лучше... хотя это уже пятая 🙃",
-    "Зато теперь ты точно запомнишь правильный ответ!",
-]
+    prompt = f"""Создай ОДИН вопрос для викторины.
 
-# Тематические фразы (по категориям)
-TOPIC_SPECIFIC_PHRASES = {
-    'films': {
-        'success': [
-            "Молодец! Даже Штирлиц оценил бы такую точность 🕵️",
-            "Как будто сам на съёмках был!",
-            "Настоящий киноман! 🎬",
-        ],
-        'fail': [
-            "Если бы Гайдай снимал квиз-шоу, ты бы не прошёл кастинг 😄",
-            "Даже Шурик знал бы ответ!",
-            "Операция 'Правильный ответ' провалена 🎬",
-        ]
-    },
-    'music': {
-        'success': [
-            "Идеальное попадание в такт! 🎶",
-            "Абсолютный музыкальный слух!",
-            "Настоящий меломан! 🎵",
-        ],
-        'fail': [
-            "Эта нота явно не в твоей тональности 🎵",
-            "Кажется, у кого-то нет слуха... и к ответам тоже 😅",
-            "Мимо нот, мимо ответа! 🎼",
-        ]
-    },
-    'geography': {
-        'success': [
-            "Точные координаты знаний! 🗺️",
-            "Как будто GPS в голове!",
-            "Настоящий географ! 🌍",
-        ],
-        'fail': [
-            "Заблудился в ответах 🗺️",
-            "Это не та карта!",
-            "Компас показывает не туда 🧭",
-        ]
-    },
-    'history': {
-        'success': [
-            "Как будто на машине времени был! ⏰",
-            "Настоящий историк!",
-            "Знаешь историю лучше учебников! 📚",
-        ],
-        'fail': [
-            "История пишется победителями, но не тобой 😄",
-            "Это из другой эпохи!",
-            "Учебник надо было почитать! 📖",
-        ]
-    },
-}
+ТЕМА: {final_topic}
+СЛОЖНОСТЬ: {difficulty_desc} ({difficulty})
+ТИП ВОПРОСА: {question_type}
+
+{type_instructions}
+
+ФОРМАТ ВЫВОДА — строго JSON:
+{{
+  "text": "Текст вопроса (до 200 символов)",
+  "choices": ["Вариант 1", "Вариант 2", "Вариант 3", "Вариант 4"],
+  "correct_index": 0,
+  "difficulty": "{difficulty}",
+  "explanation": "Объяснение (до 300 символов)",
+  "image_url": ""
+}}
+
+Верни ТОЛЬКО валидный JSON."""
+    return prompt
 
 
 def get_reply(is_correct, difficulty, topic=None):
