@@ -20,6 +20,7 @@ class SoundManager {
         tick: '/sounds/tick.mp3',
         reveal: '/sounds/reveal.mp3',
         tap: '/sounds/tap.mp3',
+        round_intro: '/sounds/round_intro.mp3', // Файл или синтез
       },
       // Можно добавить другие темы позже
     }
@@ -102,6 +103,7 @@ class SoundManager {
       tick: () => this.synthTick(),
       reveal: () => this.synthReveal(),
       tap: () => this.synthTap(),
+      round_intro: () => this.synthRoundIntro(),
     }
 
     const synthFunction = synthMap[soundName]
@@ -218,6 +220,33 @@ class SoundManager {
 
     osc.start(now)
     osc.stop(now + 0.08)
+  }
+
+  synthRoundIntro() {
+    const ctx = this.audioContext
+    const now = ctx.currentTime
+
+    // Мажорный аккорд (фанфары): C4 - E4 - G4 - C5
+    const notes = [261.63, 329.63, 392.00, 523.25]
+    
+    notes.forEach((freq, i) => {
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+
+      osc.connect(gain)
+      gain.connect(ctx.destination)
+
+      osc.frequency.value = freq
+      osc.type = 'triangle' // Треугольная волна звучит мягче и "музыкальнее"
+
+      const startTime = now + i * 0.15
+      gain.gain.setValueAtTime(0, startTime)
+      gain.gain.linearRampToValueAtTime(this.volume * 0.3, startTime + 0.05)
+      gain.gain.exponentialRampToValueAtTime(0.01, startTime + 0.8)
+
+      osc.start(startTime)
+      osc.stop(startTime + 0.8)
+    })
   }
 
   // ========================================

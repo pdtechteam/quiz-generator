@@ -138,7 +138,15 @@ class Question(models.Model):
     # НОВЫЕ ПОЛЯ ДЛЯ ГИБКОЙ ГЕНЕРАЦИИ
     QUESTION_TYPE_CHOICES = [
         ('text', 'Текстовый'),
+        ('text_standard', 'Стандартный'),
+        ('text_fill_blank', 'Заполни пропуск'),
+        ('text_odd_one', 'Лишний элемент'),
+        ('text_definition', 'Определение'),
+        ('text_quote', 'Цитата'),
+        ('text_numeric', 'Числовой'),
+        ('text_fun_logic', 'Логика/Юмор'),
         ('image', 'С изображением'),
+        ('image_contextual', 'По картинке (контекст)'),
         ('audio', 'Аудио вопрос'),
         ('video', 'Видео вопрос'),
     ]
@@ -240,6 +248,7 @@ class GameSession(models.Model):
     STATE_CHOICES = [
         ('waiting', 'Ожидание игроков'),
         ('running', 'Игра идёт'),
+        ('round_intro', 'Заставка раунда'),
         ('paused', 'На паузе'),
         ('finished', 'Завершена'),
     ]

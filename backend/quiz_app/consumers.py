@@ -16,6 +16,7 @@ from .serializers import (
 )
 
 from .awards import calculate_awards
+from .prompts_data import QUESTION_TYPE_UI
 
 class GameConsumer(AsyncWebsocketConsumer):
     """
@@ -43,6 +44,7 @@ class GameConsumer(AsyncWebsocketConsumer):
     - host_assigned: назначен ведущий
     - game_started: игра началась
     - question: новый вопрос
+    - round_intro: заставка нового раунда (категории)
     - answer_received: подтверждение ответа
     - question_result: результаты вопроса
     - game_paused: игра на паузе
@@ -213,8 +215,8 @@ class GameConsumer(AsyncWebsocketConsumer):
             }
         )
 
-        # Показываем первый вопрос
-        await self.show_next_question()
+        # Запускаем поток вопросов (с проверкой на интро раунда)
+        await self.proceed_game_flow()
 
     async def handle_answer(self, data):
         """Обработка ответа игрока"""
@@ -264,7 +266,7 @@ class GameConsumer(AsyncWebsocketConsumer):
 
             if has_more:
                 print("➡️ Следующий вопрос...")
-                await self.show_next_question()
+                await self.proceed_game_flow()
             else:
                 print("🏁 Игра окончена!")
                 await self.finish_game()
@@ -367,7 +369,7 @@ class GameConsumer(AsyncWebsocketConsumer):
         await self.skip_current_question()
 
         # Показываем следующий вопрос
-        await self.show_next_question()
+        await self.proceed_game_flow()
 
     async def handle_end_game(self, data):
         """Завершить игру досрочно (только ведущий)"""
@@ -381,7 +383,7 @@ class GameConsumer(AsyncWebsocketConsumer):
         if not await self.verify_host():
             return
 
-        await self.show_next_question()
+        await self.proceed_game_flow()
 
     async def handle_ping(self, data):
         """Heartbeat"""
@@ -428,15 +430,43 @@ class GameConsumer(AsyncWebsocketConsumer):
     # ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ
     # ========================================================================
 
-    async def show_next_question(self):
-        """Показать следующий вопрос"""
-        # Получаем ТЕКУЩИЙ вопрос
-        question_data = await self.get_next_question()
-
-        if question_data is None:
-            # Вопросов больше нет — игра окончена
+    async def proceed_game_flow(self):
+        """
+        Умный переход к следующему этапу:
+        1. Если новый тип вопроса -> показать Round Intro
+        2. Если Round Intro уже показан -> показать вопрос
+        """
+        # Получаем данные о следующем вопросе и смене типа
+        next_q_info = await self.peek_next_question_info()
+        
+        if not next_q_info:
+            # Вопросов больше нет
             await self.finish_game()
             return
+
+        current_state = await self.get_current_state()
+        
+        # Если тип вопроса сменился И мы еще не в режиме интро -> Показываем заставку
+        if next_q_info['is_new_round'] and current_state != 'round_intro':
+            await self.update_session_state('round_intro')
+            
+            round_info = QUESTION_TYPE_UI.get(next_q_info['type'], QUESTION_TYPE_UI['text_standard'])
+            
+            await self.channel_layer.group_send(
+                self.room_group_name,
+                {
+                    'type': 'round_intro',
+                    'round_title': round_info['title'],
+                    'round_description': round_info['description'],
+                    'round_icon': round_info.get('icon', 'HelpCircle')
+                }
+            )
+            return
+
+        # Иначе показываем сам вопрос
+        await self.update_session_state('running')
+        
+        question_data = next_q_info['data']
 
         # Broadcast вопроса всем
         await self.channel_layer.group_send(
@@ -547,6 +577,10 @@ class GameConsumer(AsyncWebsocketConsumer):
 
     async def question(self, event):
         """Broadcast: новый вопрос"""
+        await self.send(text_data=json.dumps(event))
+        
+    async def round_intro(self, event):
+        """Broadcast: заставка раунда"""
         await self.send(text_data=json.dumps(event))
 
     async def answer_stats(self, event):
@@ -674,17 +708,34 @@ class GameConsumer(AsyncWebsocketConsumer):
         return session.state
 
     @database_sync_to_async
-    def get_next_question(self):
-        """Получить текущий вопрос БЕЗ изменения счётчика"""
+    def peek_next_question_info(self):
+        """
+        Получить информацию о следующем вопросе и проверить, начинается ли новый раунд.
+        Не меняет состояние БД.
+        """
         session = GameSession.objects.get(code=self.session_code)
-
-        # Получаем ТЕКУЩИЙ вопрос (не увеличиваем счётчик!)
-        question = session.get_current_question()
-
-        if question is None:
+        questions = list(session.quiz.questions.all().order_by('order'))
+        
+        idx = session.current_question
+        if idx >= len(questions):
             return None
+            
+        current_q = questions[idx]
+        
+        # Проверяем, новый ли это раунд (смена типа вопроса)
+        is_new_round = False
+        if idx == 0:
+            is_new_round = True
+        else:
+            prev_q = questions[idx - 1]
+            if current_q.question_type != prev_q.question_type:
+                is_new_round = True
 
-        return QuestionForPlayerSerializer(question).data
+        return {
+            'data': QuestionForPlayerSerializer(current_q).data,
+            'type': current_q.question_type,
+            'is_new_round': is_new_round
+        }
 
     @database_sync_to_async
     def move_to_next_question(self):

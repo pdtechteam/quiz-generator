@@ -8,7 +8,9 @@ from .prompts_data import (
     FAIL_REPLIES,
     RARE_SUCCESS,
     RARE_FAILS,
-    TOPIC_SPECIFIC_PHRASES
+    TOPIC_SPECIFIC_PHRASES,
+    QUESTION_TYPE_DEFINITIONS,
+    TOPIC_TYPE_PRIORITIES
 )
 
 def detect_topic_category(topic_str):
@@ -60,6 +62,36 @@ def build_prompt(topic, count, difficulty_curve, player_count=1, question_config
     else:
         image_instruction = "Изображения для этой темы недоступны. Оставь поле image_url пустым для всех вопросов."
 
+    # Инструкции по типам вопросов (Автоматический выбор или Ручной)
+    type_selection_instruction = ""
+    
+    if not question_configs:
+        # АВТОМАТИЧЕСКИЙ РЕЖИМ
+        priorities = TOPIC_TYPE_PRIORITIES.get(theme_category, TOPIC_TYPE_PRIORITIES['default'])
+        priorities_str = ", ".join(priorities)
+        
+        type_defs = "\n".join([f"- {k}: {v}" for k, v in QUESTION_TYPE_DEFINITIONS.items()])
+        
+        type_selection_instruction = f"""
+ВЫБОР ТИПА ВОПРОСА (АВТОМАТИЧЕСКИЙ РЕЖИМ):
+Для каждого вопроса САМ выбери наиболее подходящий тип, исходя из темы и сложности.
+
+Доступные типы и правила:
+{type_defs}
+
+Приоритетные типы для этой темы: {priorities_str}
+
+ПРАВИЛА РАСПРЕДЕЛЕНИЯ:
+1. Используй РАЗНООБРАЗИЕ — не более 2 одинаковых типов подряд.
+2. Минимум 3-4 разных типа на каждые 10 вопросов.
+3. Учитывай сложность:
+   - easy: text_standard, text_fill_blank
+   - medium: text_definition, text_quote
+   - hard: text_odd_one, text_numeric
+   - very_hard: text_fun_logic, text_definition
+   - fun: text_fun_logic
+"""
+
     # Строим список требований для каждого вопроса
     requirements_list = []
     for i in range(count):
@@ -100,6 +132,7 @@ def build_prompt(topic, count, difficulty_curve, player_count=1, question_config
 {player_context}
 
 {image_instruction}
+{type_selection_instruction}
 
 ТРЕБОВАНИЯ К ВОПРОСАМ (следуй им строго для каждого номера):
 {difficulty_requirements}
@@ -112,6 +145,7 @@ def build_prompt(topic, count, difficulty_curve, player_count=1, question_config
       "choices": ["Вариант А (макс 40 символов)", "Вариант Б", "Вариант В", "Вариант Г"],
       "correct_index": 0,
       "difficulty": "medium",
+      "type": "text_standard",
       "explanation": "Краткое объяснение правильного ответа (до 300 символов)",
       "image_url": "/static/images/themes/category/image.jpg"
     }}
@@ -129,6 +163,7 @@ def build_prompt(topic, count, difficulty_curve, player_count=1, question_config
 8. difficulty: одно из значений "easy", "medium", "hard", "very_hard", "fun"
 9. Не используй вопросы с точными датами (только если тема не "История")
 10. Для сложности "fun" создавай лёгкие шуточные вопросы для разрядки
+11. Поле "type" обязательно заполняй одним из доступных типов (например, "text_standard", "text_quote" и т.д.)
 11. Если указан ТИП или КОНКРЕТНАЯ ТЕМА, обязательно учти это.
 
 ПРИМЕРЫ ХОРОШИХ ВОПРОСОВ:
@@ -139,6 +174,7 @@ def build_prompt(topic, count, difficulty_curve, player_count=1, question_config
   "choices": ["Зелёного", "Красного", "Жёлтого", "Синего"],
   "correct_index": 0,
   "difficulty": "easy",
+  "type": "text_standard",
   "explanation": "Летом листья зелёные благодаря хлорофиллу, который участвует в фотосинтезе",
   "image_url": ""
 }}
@@ -149,6 +185,7 @@ def build_prompt(topic, count, difficulty_curve, player_count=1, question_config
   "choices": ["Лев Толстой", "Фёдор Достоевский", "Антон Чехов", "Иван Тургенев"],
   "correct_index": 0,
   "difficulty": "medium",
+  "type": "text_standard",
   "explanation": "Лев Толстой написал 'Войну и мир' в 1865-1869 годах, это один из самых известных романов в мировой литературе",
   "image_url": ""
 }}
@@ -159,6 +196,7 @@ def build_prompt(topic, count, difficulty_curve, player_count=1, question_config
   "choices": ["Иннокентий Смоктуновский", "Олег Ефремов", "Евгений Леонов", "Юрий Никулин"],
   "correct_index": 0,
   "difficulty": "hard",
+  "type": "image_contextual",
   "explanation": "Иннокентий Смоктуновский блестяще сыграл страхового агента Деточкина в этой комедии 1966 года",
   "image_url": "/static/images/themes/films/soviet_cinema.jpg"
 }}
@@ -169,6 +207,7 @@ def build_prompt(topic, count, difficulty_curve, player_count=1, question_config
   "choices": ["7", "5", "6", "42"],
   "correct_index": 0,
   "difficulty": "fun",
+  "type": "text_fun_logic",
   "explanation": "На Земле 7 континентов, и мы все их помним! (хотя Атлантиду некоторые забывают)",
   "image_url": ""
 }}

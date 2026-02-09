@@ -43,6 +43,7 @@ class QuestionSchema(BaseModel):
     choices: List[str] = Field(min_items=4, max_items=4)
     correct_index: int = Field(ge=0, le=3)
     difficulty: str = Field(default="medium")
+    type: str = Field(default="text_standard")
     explanation: str = Field(max_length=300, default="")
     image_url: str = Field(max_length=500, default="")
 
@@ -302,6 +303,7 @@ def save_questions_to_quiz(quiz, questions):
             text=q.text,
             difficulty=q.difficulty,
             explanation=q.explanation,
+            question_type=q.type,  # Сохраняем определенный LLM тип
             image_url=q.image_url or '',
             time_limit=question_time,  # ✅ ИЗМЕНЕНО: используем время по сложности
             generated_by_model=True
@@ -427,7 +429,7 @@ def generate_quiz_from_draft(draft):
                 explanation=q.explanation,
                 image_url=q.image_url or '',
                 time_limit=question_time,
-                question_type=settings['question_type'],
+                question_type=q.type if q.type != 'text_standard' else settings['question_type'], # Используем тип от LLM, если он специфичный
                 topic_refinement=settings['topic_refinement'],
                 has_custom_settings=settings['has_custom_settings'],
                 generated_by_model=True

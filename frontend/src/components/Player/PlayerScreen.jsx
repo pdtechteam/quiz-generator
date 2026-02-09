@@ -7,6 +7,8 @@ import QuestionScreen from './QuestionScreen'
 import ResultScreen from './ResultScreen'
 import HostControls from './HostControls'
 import { ReconnectingNotice, DisconnectedNotice, ReconnectFailedNotice } from '../Common/ReconnectingNotice'
+import RoundIntro from '../Common/RoundIntro'
+import { playSound } from '../../utils/sounds'
 
 function PlayerScreen({ onBackToWelcome }) {
   const [currentView, setCurrentView] = useState('join')
@@ -18,6 +20,7 @@ function PlayerScreen({ onBackToWelcome }) {
     isHost: false,
     result: null
   })
+  const [roundInfo, setRoundInfo] = useState(null)
 
   // Состояние подключения
   const [connectionState, setConnectionState] = useState({
@@ -150,6 +153,17 @@ function PlayerScreen({ onBackToWelcome }) {
       setCurrentView('question')
     })
 
+    websocket.on('round_intro', (data) => {
+      console.log('🔔 Player: Round Intro:', data)
+      setRoundInfo({
+        title: data.round_title,
+        description: data.round_description,
+        icon: data.round_icon
+      })
+      setCurrentView('round_intro')
+      playSound('round_intro')
+    })
+
     websocket.on('question', (data) => {
       console.log('❓ Player: Question:', data)
       setGameState(prev => ({ ...prev, question: data.question }))
@@ -230,6 +244,26 @@ function PlayerScreen({ onBackToWelcome }) {
             ws?.startGame()
           }}
         />
+      )}
+
+      {currentView === 'round_intro' && roundInfo && (
+        <>
+          <RoundIntro
+            title={roundInfo.title}
+            description={roundInfo.description}
+            iconName={roundInfo.icon}
+          />
+          {gameState.isHost && (
+            <div className="fixed bottom-12 left-0 right-0 flex justify-center z-[60]">
+              <button
+                onClick={() => ws?.nextQuestion && ws.nextQuestion()}
+                className="px-8 py-4 bg-white text-purple-900 rounded-2xl font-bold text-xl shadow-2xl hover:scale-105 transition-transform animate-bounce"
+              >
+                Начать раунд ▶
+              </button>
+            </div>
+          )}
+        </>
       )}
 
       {currentView === 'question' && (

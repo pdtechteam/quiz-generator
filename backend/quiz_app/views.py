@@ -172,12 +172,7 @@ class GameSessionViewSet(viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
         """Создание игровой сессии"""
         try:
-            # Поддержка quiz_id если фронтенд его шлет, а сериализатор ждет quiz
-            data = request.data.copy()
-            if 'quiz_id' in data and 'quiz' not in data:
-                data['quiz'] = data['quiz_id']
-
-            serializer = self.get_serializer(data=data)
+            serializer = self.get_serializer(data=request.data)
             serializer.is_valid(raise_exception=True)
             session = serializer.save()
 
