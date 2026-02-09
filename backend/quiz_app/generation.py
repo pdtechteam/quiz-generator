@@ -15,8 +15,8 @@ from pydantic import BaseModel, Field, validator
 from django.core.cache import cache
 from django.conf import settings
 
-from .models import Quiz, Question, Choice
-from .prompts import build_prompt, get_difficulty_curve
+from .models import Quiz, Question, Choice, QuestionConfig
+from .prompts import build_prompt, get_difficulty_curve, build_prompt_for_single_question
 
 logger = logging.getLogger(__name__)
 
@@ -95,7 +95,7 @@ def generate_cache_key(topic, count, difficulty_curve):
     return f"quiz:{PROMPT_VERSION}:{QUESTION_SCHEMA_VERSION}:{hash_part}"
 
 
-def generate_questions(topic, count, difficulty='medium', player_count=1, retries=3):
+def generate_questions(topic, count, difficulty='medium', player_count=1, retries=3, question_configs=None):
     """
     Генерирует вопросы через OpenAI API с retry логикой
 
@@ -105,6 +105,7 @@ def generate_questions(topic, count, difficulty='medium', player_count=1, retrie
         difficulty: базовая сложность (используется для кривой)
         player_count: количество игроков (для адаптации сложности)
         retries: количество попыток при ошибке
+        question_configs: список индивидуальных настроек (опционально)
 
     Returns:
         list[QuestionSchema]: список сгенерированных вопросов
@@ -113,10 +114,14 @@ def generate_questions(topic, count, difficulty='medium', player_count=1, retrie
         ValueError: если генерация не удалась после всех попыток
     """
     # Получаем кривую сложности
-    difficulty_curve = get_difficulty_curve(count, player_count)
+    if question_configs:
+        # Если есть конфиги, берем сложности оттуда
+        difficulty_curve = [c.get('difficulty', 'medium') for c in question_configs]
+    else:
+        difficulty_curve = get_difficulty_curve(count, player_count)
 
     # Строим промпт
-    prompt = build_prompt(topic, count, difficulty_curve, player_count)
+    prompt = build_prompt(topic, count, difficulty_curve, player_count, question_configs)
 
     # Получаем настройки из settings
     api_key = getattr(settings, 'OPENAI_API_KEY', None)
@@ -185,6 +190,60 @@ def generate_questions(topic, count, difficulty='medium', player_count=1, retrie
             time.sleep(wait_time)
 
     raise ValueError("Исчерпаны все попытки генерации")
+
+
+def generate_single_question(topic, difficulty, question_type='text', topic_refinement='', retries=3):
+    """
+    Генерирует один вопрос с точными настройками
+    """
+    prompt = build_prompt_for_single_question(topic, difficulty, question_type, topic_refinement)
+
+    api_key = getattr(settings, 'OPENAI_API_KEY', None)
+    api_base = getattr(settings, 'OPENAI_API_BASE', None)
+    model = getattr(settings, 'OPENAI_MODEL', 'openai/gpt-5.2-chat')
+
+    client = OpenAI(api_key=api_key, base_url=api_base)
+
+    for attempt in range(retries):
+        try:
+            response = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": "You are a quiz generator. Respond with valid JSON only."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.7,
+                max_tokens=1000,
+                timeout=30
+            )
+
+            content = response.choices[0].message.content.strip()
+            
+            # Очистка JSON
+            if content.startswith('```json'):
+                content = content.replace('```json', '', 1)
+            if content.startswith('```'):
+                content = content.replace('```', '', 1)
+            if content.endswith('```'):
+                content = content.rsplit('```', 1)[0]
+            content = content.strip()
+
+            data = json.loads(content)
+            
+            # Если вернулся список (иногда бывает), берем первый элемент
+            if isinstance(data, list):
+                data = data[0]
+            elif 'questions' in data and isinstance(data['questions'], list):
+                data = data['questions'][0]
+
+            # Валидация
+            return QuestionSchema(**data)
+
+        except Exception as e:
+            logger.error(f"Single gen attempt {attempt + 1} failed: {e}")
+            if attempt == retries - 1:
+                raise e
+            time.sleep(1)
 
 
 def cached_generate(topic, count, difficulty='medium', player_count=1):
@@ -300,5 +359,101 @@ def generate_and_save_quiz(topic, count, description='', time_per_question=20, p
 
     except Exception as e:
         # Если что-то пошло не так — удаляем квиз
+        quiz.delete()
+        raise e
+
+
+# ============================================================================
+# ГЕНЕРАЦИЯ ИЗ ЧЕРНОВИКА
+# ============================================================================
+
+def generate_quiz_from_draft(draft):
+    """
+    Генерирует квиз из черновика с учётом индивидуальных настроек вопросов
+
+    Args:
+        draft: экземпляр QuizDraft
+
+    Returns:
+        Quiz: созданный квиз с вопросами
+    """
+    
+    # Создаём квиз с базовыми настройками
+    quiz = Quiz.objects.create(
+        title=f"Квиз: {draft.topic}",
+        topic=draft.topic,
+        description=f"Сгенерированный квиз по теме: {draft.topic}",
+        time_per_question=draft.base_time_limit
+    )
+    
+    try:
+        # Получаем все конфигурации вопросов
+        configs = draft.question_configs.all().order_by('order')
+        count = configs.count()
+        
+        # Собираем настройки для пакетной генерации
+        configs_data = []
+        for config in configs:
+            # Получаем настройки для этого вопроса
+            settings = config.get_settings()
+            configs_data.append({
+                'difficulty': settings['difficulty'],
+                'type': settings['question_type'],
+                'refinement': settings['topic_refinement']
+            })
+
+        # Генерируем ВСЕ вопросы одним запросом
+        questions_schema = generate_questions(
+            topic=draft.topic,
+            count=count,
+            difficulty=draft.base_difficulty, # fallback
+            player_count=1,
+            question_configs=configs_data
+        )
+        
+        # Сохраняем вопросы в БД, сопоставляя их с конфигами
+        for idx, (config, q) in enumerate(zip(configs, questions_schema)):
+            settings = config.get_settings()
+                
+            # Применяем индивидуальные настройки
+            question_time = settings['time_limit'] or draft.base_time_limit
+                
+            # Создаём вопрос
+            question = Question.objects.create(
+                quiz=quiz,
+                order=config.order,
+                text=q.text,
+                difficulty=settings['difficulty'],
+                explanation=q.explanation,
+                image_url=q.image_url or '',
+                time_limit=question_time,
+                question_type=settings['question_type'],
+                topic_refinement=settings['topic_refinement'],
+                has_custom_settings=settings['has_custom_settings'],
+                generated_by_model=True
+            )
+                
+            # Создаём варианты ответа
+            for choice_idx, choice_text in enumerate(q.choices):
+                Choice.objects.create(
+                    question=question,
+                    text=choice_text,
+                    is_correct=(choice_idx == q.correct_index),
+                    order=choice_idx
+                )
+                
+            # Обновляем статус конфигурации
+            config.is_generated = True
+            config.generated_question = question
+            config.save()
+        
+        # Обновляем счётчик вопросов
+        quiz.question_count = count
+        quiz.save()
+        
+        logger.info(f"Generated quiz {quiz.id} from draft {draft.id}")
+        return quiz
+        
+    except Exception as e:
         quiz.delete()
         raise e

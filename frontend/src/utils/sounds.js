@@ -24,7 +24,6 @@ class SoundManager {
       // Можно добавить другие темы позже
     }
 
-    this.initAudioContext()
     this.preloadSounds()
   }
 
@@ -60,6 +59,13 @@ class SoundManager {
   }
 
   play(soundName) {
+    // Ленивая инициализация AudioContext (для обхода политик автовоспроизведения браузеров)
+    if (!this.audioContext) {
+      this.initAudioContext()
+    } else if (this.audioContext.state === 'suspended') {
+      this.audioContext.resume()
+    }
+
     // Если нужен синтез или файл не загрузился
     if (this.useSynthesis[soundName]) {
       this.playSynthesized(soundName)

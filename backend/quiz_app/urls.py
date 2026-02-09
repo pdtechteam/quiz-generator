@@ -12,6 +12,8 @@ router.register(r'quizzes', views.QuizViewSet, basename='quiz')
 router.register(r'sessions', views.GameSessionViewSet, basename='session')
 router.register(r'players', views.PlayerViewSet, basename='player')
 router.register(r'answers', views.AnswerViewSet, basename='answer')
+router.register(r'quiz-drafts', views.QuizDraftViewSet, basename='quiz-draft')
+router.register(r'question-configs', views.QuestionConfigViewSet, basename='question-config')
 
 urlpatterns = [
     path('', include(router.urls)),

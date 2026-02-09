@@ -134,6 +134,35 @@ class Question(models.Model):
         help_text="0 = использовать время из квиза. Можно задать индивидуальное время для сложных вопросов"
     )
     # ===========================
+    
+    # НОВЫЕ ПОЛЯ ДЛЯ ГИБКОЙ ГЕНЕРАЦИИ
+    QUESTION_TYPE_CHOICES = [
+        ('text', 'Текстовый'),
+        ('image', 'С изображением'),
+        ('audio', 'Аудио вопрос'),
+        ('video', 'Видео вопрос'),
+    ]
+    
+    question_type = models.CharField(
+        max_length=20,
+        choices=QUESTION_TYPE_CHOICES,
+        default='text',
+        verbose_name="Тип вопроса"
+    )
+    
+    topic_refinement = models.CharField(
+        max_length=200,
+        blank=True,
+        verbose_name="Уточнение темы",
+        help_text="Конкретизация темы для этого вопроса (например: Вторая мировая война)"
+    )
+    
+    has_custom_settings = models.BooleanField(
+        default=False,
+        verbose_name="Имеет индивидуальные настройки",
+        help_text="True если вопрос настроен вручную"
+    )
+    
     generated_by_model = models.BooleanField(
         default=True,
         verbose_name="Сгенерирован LLM"
@@ -433,3 +462,142 @@ class Answer(models.Model):
     def __str__(self):
         mark = "✓" if self.is_correct else "✗"
         return f"{mark} {self.player.name} - Q{self.question.order} ({self.points_earned} pts)"
+
+
+# ============================================================================
+# НОВЫЕ МОДЕЛИ ДЛЯ ГИБКОЙ ГЕНЕРАЦИИ КВИЗОВ
+# ============================================================================
+
+class QuizDraft(models.Model):
+    """
+    Черновик квиза для сохранения настроек перед генерацией.
+    Позволяет пользователю вернуться и изменить настройки.
+    """
+    topic = models.CharField(max_length=200, verbose_name="Тема квиза")
+    num_questions = models.IntegerField(default=10, verbose_name="Количество вопросов")
+    
+    # Базовые настройки (применяются ко всем вопросам по умолчанию)
+    base_difficulty = models.CharField(
+        max_length=20,
+        choices=Question.DIFFICULTY_CHOICES,
+        default='medium',
+        verbose_name="Базовая сложность"
+    )
+    base_time_limit = models.IntegerField(
+        default=20,
+        validators=[MinValueValidator(5), MaxValueValidator(120)],
+        verbose_name="Базовое время на вопрос (сек)"
+    )
+    base_question_type = models.CharField(
+        max_length=20,
+        choices=Question.QUESTION_TYPE_CHOICES,
+        default='text',
+        verbose_name="Базовый тип вопроса"
+    )
+    
+    # Метаданные
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата создания")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Дата обновления")
+    is_generated = models.BooleanField(default=False, verbose_name="Сгенерирован")
+    
+    # Связь с готовым квизом
+    generated_quiz = models.ForeignKey(
+        Quiz,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='drafts',
+        verbose_name="Сгенерированный квиз"
+    )
+    
+    class Meta:
+        verbose_name = "Черновик квиза"
+        verbose_name_plural = "Черновики квизов"
+        ordering = ['-created_at']
+    
+    def __str__(self):
+        return f"Черновик: {self.topic} ({self.num_questions} вопросов)"
+
+
+class QuestionConfig(models.Model):
+    """
+    Конфигурация вопроса перед генерацией.
+    Используется только в UI, не сохраняется после генерации.
+    Связана с QuizDraft.
+    """
+    quiz_draft = models.ForeignKey(
+        QuizDraft,
+        on_delete=models.CASCADE,
+        related_name='question_configs',
+        verbose_name="Черновик квиза"
+    )
+    order = models.IntegerField(verbose_name="Порядковый номер вопроса")
+    
+    # Настройки
+    use_custom_settings = models.BooleanField(
+        default=False,
+        verbose_name="Использовать индивидуальные настройки"
+    )
+    
+    # Индивидуальные настройки (пустые если use_custom_settings=False)
+    difficulty = models.CharField(
+        max_length=20,
+        choices=Question.DIFFICULTY_CHOICES,
+        blank=True,
+        verbose_name="Сложность"
+    )
+    time_limit = models.IntegerField(
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(5), MaxValueValidator(120)],
+        verbose_name="Время на вопрос (сек)"
+    )
+    question_type = models.CharField(
+        max_length=20,
+        choices=Question.QUESTION_TYPE_CHOICES,
+        blank=True,
+        verbose_name="Тип вопроса"
+    )
+    topic_refinement = models.CharField(
+        max_length=200,
+        blank=True,
+        verbose_name="Уточнение темы"
+    )
+    
+    # Статус генерации
+    is_generated = models.BooleanField(default=False, verbose_name="Сгенерирован")
+    generated_question = models.ForeignKey(
+        Question,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='configs',
+        verbose_name="Сгенерированный вопрос"
+    )
+    
+    class Meta:
+        verbose_name = "Конфигурация вопроса"
+        verbose_name_plural = "Конфигурации вопросов"
+        ordering = ['order']
+        unique_together = ['quiz_draft', 'order']
+    
+    def __str__(self):
+        return f"Вопрос {self.order} для {self.quiz_draft}"
+    
+    def get_settings(self):
+        """Возвращает словарь с настройками (базовыми или индивидуальными)"""
+        if self.use_custom_settings:
+            return {
+                'difficulty': self.difficulty or self.quiz_draft.base_difficulty,
+                'time_limit': self.time_limit or self.quiz_draft.base_time_limit,
+                'question_type': self.question_type or self.quiz_draft.base_question_type,
+                'topic_refinement': self.topic_refinement,
+                'has_custom_settings': True
+            }
+        return {
+            'difficulty': self.quiz_draft.base_difficulty,
+            'time_limit': self.quiz_draft.base_time_limit,
+            'question_type': self.quiz_draft.base_question_type,
+            'topic_refinement': '',
+            'has_custom_settings': False
+        }

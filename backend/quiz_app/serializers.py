@@ -3,7 +3,7 @@
 # ============================================================================
 
 from rest_framework import serializers
-from .models import Quiz, Question, Choice, GameSession, Player, Answer
+from .models import Quiz, Question, Choice, GameSession, Player, Answer, QuizDraft, QuestionConfig
 
 
 class ChoiceSerializer(serializers.ModelSerializer):
@@ -152,12 +152,37 @@ class GameSessionSerializer(serializers.ModelSerializer):
 class SessionCreateSerializer(serializers.ModelSerializer):
     """Сериализатор для создания игровой сессии"""
 
+    quiz_id = serializers.IntegerField(write_only=True, required=False)
+    quiz = serializers.PrimaryKeyRelatedField(queryset=Quiz.objects.all(), required=False)
+    host_name = serializers.CharField(write_only=True, required=False, default='Admin')
+
     class Meta:
         model = GameSession
-        fields = ['quiz']
+        fields = ['quiz', 'quiz_id', 'host_name']
+
+    def validate(self, data):
+        """Проверяем, что передан либо quiz, либо quiz_id"""
+        if 'quiz' not in data and 'quiz_id' not in data:
+            raise serializers.ValidationError("Требуется quiz или quiz_id")
+        if 'quiz' in data and 'quiz_id' in data:
+            raise serializers.ValidationError("Нельзя передавать и quiz, и quiz_id")
+        return data
 
     def create(self, validated_data):
         """Создаём сессию с автогенерированным кодом"""
+        # Если передан quiz_id, извлекаем его и используем для поиска квиза
+        quiz_id = validated_data.pop('quiz_id', None)
+        if quiz_id:
+            try:
+                quiz = Quiz.objects.get(id=quiz_id)
+                validated_data['quiz'] = quiz
+            except Quiz.DoesNotExist:
+                raise serializers.ValidationError(f"Квиз с ID {quiz_id} не найден")
+        
+        # Удаляем host_name, так как его нет в модели GameSession
+        # (в будущем можно использовать его для создания Player-хоста здесь же)
+        host_name = validated_data.pop('host_name', 'Admin')
+        
         session = GameSession.objects.create(**validated_data)
         return session
 
@@ -202,3 +227,73 @@ class LeaderboardSerializer(serializers.Serializer):
     current_streak = serializers.IntegerField()
     connected = serializers.BooleanField()
     is_host = serializers.BooleanField()
+
+
+# ============================================================================
+# НОВЫЕ СЕРИАЛИЗАТОРЫ ДЛЯ ГИБКОЙ ГЕНЕРАЦИИ КВИЗОВ
+# ============================================================================
+
+class QuestionConfigSerializer(serializers.ModelSerializer):
+    """Сериализатор для конфигурации вопроса"""
+    
+    class Meta:
+        model = QuestionConfig
+        fields = [
+            'order', 'use_custom_settings',
+            'difficulty', 'time_limit', 'question_type', 'topic_refinement',
+            'is_generated', 'generated_question'
+        ]
+        read_only_fields = ['is_generated', 'generated_question']
+
+
+class QuestionConfigCreateSerializer(serializers.Serializer):
+    """Сериализатор для создания/обновления конфигурации вопроса"""
+    order = serializers.IntegerField()
+    use_custom_settings = serializers.BooleanField(default=False)
+    difficulty = serializers.CharField(required=False, allow_blank=True)
+    time_limit = serializers.IntegerField(required=False, allow_null=True)
+    question_type = serializers.CharField(required=False, allow_blank=True)
+    topic_refinement = serializers.CharField(required=False, allow_blank=True)
+
+
+class QuizDraftSerializer(serializers.ModelSerializer):
+    """Сериализатор для черновика квиза"""
+    question_configs = QuestionConfigSerializer(many=True, read_only=True)
+    
+    class Meta:
+        model = QuizDraft
+        fields = [
+            'id', 'topic', 'num_questions',
+            'base_difficulty', 'base_time_limit', 'base_question_type',
+            'created_at', 'updated_at', 'is_generated', 'generated_quiz',
+            'question_configs'
+        ]
+        read_only_fields = ['created_at', 'updated_at', 'is_generated', 'generated_quiz']
+
+
+class QuizDraftCreateSerializer(serializers.ModelSerializer):
+    """Сериализатор для создания черновика квиза"""
+    
+    class Meta:
+        model = QuizDraft
+        fields = [
+            'topic', 'num_questions',
+            'base_difficulty', 'base_time_limit', 'base_question_type'
+        ]
+
+
+class QuizGenerateRequestSerializer(serializers.Serializer):
+    """Сериализатор для запроса генерации квиза"""
+    topic = serializers.CharField(max_length=200)
+    num_questions = serializers.IntegerField(min_value=5, max_value=50, default=10)
+    
+    base_settings = serializers.DictField(
+        child=serializers.CharField(),
+        required=False,
+        default=lambda: {'difficulty': 'medium', 'time_limit': 20, 'question_type': 'text'}
+    )
+    custom_questions = serializers.ListField(
+        child=serializers.DictField(),
+        required=False,
+        default=list
+    )

@@ -98,6 +98,52 @@ class API {
       }),
     })
   }
+
+  // Черновики квизов
+  async getQuizDrafts() {
+    return this.request('/quiz-drafts/')
+  }
+
+  async getQuizDraft(id) {
+    return this.request(`/quiz-drafts/${id}/`)
+  }
+
+  async createQuizDraft(data) {
+    return this.request('/quiz-drafts/', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  }
+
+  async generateQuizFromDraft(draftId) {
+    return this.request(`/quiz-drafts/${draftId}/generate/`, {
+      method: 'POST',
+    })
+  }
+
+  async resetQuizDraft(draftId) {
+    return this.request(`/quiz-drafts/${draftId}/reset-all/`, {
+      method: 'POST',
+    })
+  }
+
+  // Конфигурации вопросов
+  async getQuestionConfigs() {
+    return this.request('/question-configs/')
+  }
+
+  async createQuestionConfig(data) {
+    return this.request('/question-configs/', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  }
+
+  async resetQuestionConfig(configId) {
+    return this.request(`/question-configs/${configId}/reset/`, {
+      method: 'POST',
+    })
+  }
 }
 
 const api = new API()
