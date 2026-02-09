@@ -1,72 +1,106 @@
-# Quiz Generator
+# 🎮 AI Quiz Generator
 
-Домашняя квиз-игра в стиле Kahoot с генерацией вопросов через LLM.
+Интерактивная платформа для создания и проведения викторин с использованием искусственного интеллекта. Проект состоит из Django REST Framework бэкенда (с поддержкой WebSockets) и React фронтенда.
 
-## Быстрый старт
+## ✨ Возможности
 
-### 1. Активация окружения
+### 🤖 Генерация квизов
+*   **AI-генерация:** Создание вопросов по любой теме с помощью LLM (OpenAI GPT).
+*   **Гибкая настройка:** Возможность задать сложность, количество вопросов и время на ответ.
+*   **Детальный режим:** Настройка каждого вопроса индивидуально (тип вопроса, уточнение темы, сложность) перед генерацией через систему черновиков.
+*   **Мультимедиа:** Поддержка текстовых вопросов и вопросов с изображениями (автоматический подбор по теме).
 
-```bash
-conda activate quiz-generator
-```
+### 🎮 Игровой процесс
+*   **Real-time мультиплеер:** Синхронизация состояния игры через WebSockets (Django Channels).
+*   **Роли:** Ведущий (Host) управляет игрой, игроки подключаются по коду или QR-коду.
+*   **Динамика:** Таймеры, подсчет очков, серии правильных ответов (streak), таблица лидеров в реальном времени.
+*   **Звуковое сопровождение:** Адаптивная музыка и звуковые эффекты (синтез звука и файлы).
 
-### 2. Запуск backend
+### 🛠 Админ-панель
+*   Управление списком квизов.
+*   Создание черновиков и генерация.
+*   Мониторинг активных сессий.
+*   Импорт/Экспорт квизов (JSON).
 
-```bash
+## 🚀 Технологический стек
 
-```
+### Backend
+*   **Python 3.10+**
+*   **Django 5.0** & **Django REST Framework**
+*   **Django Channels** (WebSockets) & **Daphne**
+*   **Redis** (Channel Layer)
+*   **OpenAI API** (Генерация контента)
 
-### 3. Django Admin
+### Frontend
+*   **React 18**
+*   **Vite**
+*   **Tailwind CSS**
+*   **Lucide React** (Иконки)
 
+## 🛠 Установка и запуск
 
+### Предварительные требования
+*   Python 3.8+
+*   Node.js 16+
+*   Redis (должен быть запущен для работы WebSockets)
 
-## Структура проекта
-
-```
-quiz-generator/
-├── backend/          # Django backend
-├── frontend/         # React frontend
-└── README.md
-
-Интернет/Локалка
-       ↓
-quiz.dolgovst.keenetic.pro:80
-       ↓
-Роутер Keenetic (порт 80 → 192.168.2.100:80)
-       ↓
-Nginx (192.168.2.100:80)
-    ├─→ / → Vite (5173) - фронтенд
-    ├─→ /api/ → Django (8000) - API
-    ├─→ /ws/ → Django (8000) - WebSocket
-    └─→ /admin/ → Django (8000) - Admin
-```
-
-## Технологии
-
-- **Backend:** Django 5.0, Channels, OpenAI API
-- **Frontend:** React 18, Tailwind CSS
-- **Database:** SQLite (dev), PostgreSQL (prod)
-- **WebSocket:** Redis + Channels
-
-## Разработка
-
-### Создание миграций
+### 1. Настройка Backend
 
 ```bash
-python manage.py makemigrations
+cd backend
+# Создать виртуальное окружение
+python -m venv venv
+# Активировать (Windows)
+venv\Scripts\activate
+# Активировать (Linux/macOS)
+source venv/bin/activate
+
+# Установить зависимости
+pip install -r requirements.txt
+
+# Применить миграции
 python manage.py migrate
-```
 
-### Создание суперпользователя
-
-```bash
+# Создать суперпользователя (для админки Django)
 python manage.py createsuperuser
 ```
 
-### Запуск Redis (для WebSocket)
+Создайте файл `.env` в папке `backend/quiz_project/` (рядом с settings.py) или в корне `backend`:
 
-```bash
-
+```env
+OPENAI_API_KEY=sk-your-api-key-here
+# Опционально, если используется локальная LLM или прокси
+# OPENAI_API_BASE=http://localhost:1234/v1
+# OPENAI_MODEL=gpt-4-turbo
+DEBUG=True
+SECRET_KEY=your-secret-key
 ```
 
-## TODO
+Запуск сервера:
+```bash
+python manage.py runserver
+```
+
+### 2. Настройка Frontend
+
+```bash
+cd frontend
+# Установить зависимости
+npm install
+
+# Запуск в режиме разработки
+npm run dev
+```
+
+Приложение будет доступно по адресу: `http://localhost:5173`
+
+## 📂 Структура проекта
+
+*   `backend/quiz_app`: Основное приложение Django.
+    *   `generation.py`: Логика работы с LLM (генерация вопросов).
+    *   `consumers.py`: Логика WebSockets (игровой процесс).
+    *   `prompts.py`: Шаблоны промптов и логика их построения.
+    *   `prompts_data.py`: Данные для промптов (фразы, темы).
+*   `frontend/src`: Исходный код React.
+    *   `components/Admin`: Компоненты админки и генератора квизов.
+    *   `components/Game`: Компоненты игрового интерфейса (лобби, вопросы, результаты).
